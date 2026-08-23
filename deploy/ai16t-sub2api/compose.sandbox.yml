@@ -75,22 +75,31 @@ services:
     container_name: ai16t-sub2api-sandbox-redis
     restart: "no"
     command:
-      - redis-server
-      - --appendonly
-      - "yes"
-      - --requirepass
-      - ${AI16T_SUB2API_REDIS_PASSWORD:?required}
+      - sh
+      - -eu
+      - -c
+      - |
+        umask 077
+        {
+          printf 'appendonly yes\n'
+          printf 'requirepass '
+          cat /run/secrets/redis_password
+          printf '\n'
+        } > /tmp/redis.conf
+        exec gosu redis redis-server /tmp/redis.conf
+    secrets:
+      - redis_password
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,mode=1777
     volumes:
       - redis_data:/data
     networks:
       - platform_b_private
     healthcheck:
-      test: ["CMD-SHELL", "redis-cli -a $$AI16T_SUB2API_REDIS_PASSWORD ping | grep -q PONG"]
+      test: ["CMD-SHELL", "REDISCLI_AUTH=\"$$(cat /run/secrets/redis_password)\" redis-cli ping | grep -q PONG"]
       interval: 5s
       timeout: 3s
       retries: 20
-    environment:
-      AI16T_SUB2API_REDIS_PASSWORD: ${AI16T_SUB2API_REDIS_PASSWORD:?required}
 
 networks:
   platform_b_private:
@@ -106,3 +115,7 @@ volumes:
     name: ai16t-sub2api-sandbox-postgres-backup
   redis_data:
     name: ai16t-sub2api-sandbox-redis-data
+
+secrets:
+  redis_password:
+    environment: AI16T_SUB2API_REDIS_PASSWORD

@@ -2,6 +2,8 @@
 
 Status: Design record for PLATFORM_B.
 
+The Compose file is a static local-only blueprint and was not started in this task. Its Redis test password is supplied as a Compose secret and materialized only into an ephemeral mode-0600 config inside the container; it is not placed in the `redis-server` argument vector.
+
 ## Environment Separation
 
 PLATFORM_B needs independent:
