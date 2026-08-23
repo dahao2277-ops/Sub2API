@@ -27,3 +27,5 @@ python3 monitor_staging.py
 Staging 的 Sub2API 测试 Header 双门固定关闭。Commercial Core 仍运行在 `isolated-test + mock-only-enabled`，原因是本轮只允许 Mock Provider 和隔离测试额度；该状态不得直接提升为公网 Production。
 
 升级监控只调用仓库现有 `tools/ai16t/check_upstream_status.sh` 并报告 `UPDATE_AVAILABLE`。禁止自动升级 Production。
+
+升级模拟可将只含镜像选择的 Compose override 放在忽略的 `.runtime/` 中，并通过 `AI16T_STAGING_COMPOSE_OVERRIDE` 交给备份恢复脚本。脚本只接受该目录内的现有文件，候选 migration 仍只作用于一次性恢复数据库。

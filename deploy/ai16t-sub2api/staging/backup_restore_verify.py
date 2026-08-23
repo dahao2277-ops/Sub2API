@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import stat
 import subprocess
 import time
@@ -18,17 +19,27 @@ PRIMARY_DB = "ai16t_sub2api_staging"
 RESTORE_DB = "ai16t_sub2api_restore_verify"
 
 
+def compose_files() -> list[Path]:
+    files = [COMPOSE_FILE]
+    override_value = os.environ.get("AI16T_STAGING_COMPOSE_OVERRIDE", "").strip()
+    if override_value:
+        override = Path(override_value).resolve()
+        if override.parent != RUNTIME.resolve() or not override.is_file():
+            raise RuntimeError("staging override must be an existing file inside .runtime")
+        files.append(override)
+    return files
+
+
+def compose_prefix() -> list[str]:
+    command = ["docker", "compose", "--env-file", str(ENV_FILE)]
+    for compose_file in compose_files():
+        command.extend(["-f", str(compose_file)])
+    return command
+
+
 def compose(*arguments: str, capture: bool = False) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
-        [
-            "docker",
-            "compose",
-            "--env-file",
-            str(ENV_FILE),
-            "-f",
-            str(COMPOSE_FILE),
-            *arguments,
-        ],
+        [*compose_prefix(), *arguments],
         check=True,
         capture_output=capture,
         text=True,
@@ -37,15 +48,7 @@ def compose(*arguments: str, capture: bool = False) -> subprocess.CompletedProce
 
 def compose_bytes(*arguments: str) -> bytes:
     completed = subprocess.run(
-        [
-            "docker",
-            "compose",
-            "--env-file",
-            str(ENV_FILE),
-            "-f",
-            str(COMPOSE_FILE),
-            *arguments,
-        ],
+        [*compose_prefix(), *arguments],
         check=True,
         capture_output=True,
     )
