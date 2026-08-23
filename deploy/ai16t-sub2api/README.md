@@ -18,3 +18,5 @@
 3. 获得 Docker、端口和 Compose 项目独占锁后，使用本目录的 `compose.sandbox.yml` 构建并启动。
 4. 先验证五个服务健康和 `/ready`，再运行 `dynamic_e2e.py`。证据只保存在忽略的 `.runtime` 目录并保持 `0600`。
 5. 不得复用或修改平台 A 的容器、端口、数据库、Redis、volume、域名或 Secret。
+
+完成 Hybrid `GO/GO` 后，本地 Staging、Blue/Green、Backup/Restore 与监控准备位于 `staging/`。该目录有独立命名空间和 Secret，不复用本 Sandbox 数据。

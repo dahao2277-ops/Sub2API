@@ -144,6 +144,8 @@ frontend/coverage/
 aicodex
 output/
 deploy/ai16t-sub2api/.runtime/
+deploy/ai16t-sub2api/staging/.runtime/
+deploy/ai16t-sub2api/staging/__pycache__/
 
 # Vitest / Vite cache at repo root
 .vite/

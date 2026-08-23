@@ -1,0 +1,241 @@
+name: sub2api-ai16t-mac1-staging
+
+x-sub2api-slot: &sub2api-slot
+  build:
+    context: ../../..
+    dockerfile: Dockerfile
+  image: sub2api-ai16t-mac1-staging:${SUB2API_IMAGE_TAG:-hybrid-v1}
+  restart: "no"
+  init: true
+  security_opt:
+    - no-new-privileges:true
+  env_file:
+    - .runtime/sub2api.env
+  environment: &sub2api-environment
+    AUTO_SETUP: "true"
+    SERVER_HOST: 0.0.0.0
+    SERVER_PORT: "8080"
+    SERVER_MODE: release
+    DATABASE_HOST: postgres
+    DATABASE_PORT: "5432"
+    DATABASE_USER: ai16t_sub2api_staging
+    DATABASE_DBNAME: ai16t_sub2api_staging
+    DATABASE_SSLMODE: disable
+    REDIS_HOST: redis
+    REDIS_PORT: "6379"
+    REDIS_DB: "0"
+    TZ: Asia/Kuala_Lumpur
+    AI16T_HYBRID_ENABLED: "true"
+    AI16T_ISOLATED_TEST_MODE: "false"
+    AI16T_ISOLATED_TEST_HOOKS_ENABLED: "false"
+    AI16T_CORE_URL: http://commercial-core:8787
+    AI16T_CORE_SIGNING_KEY_FILE: /run/ai16t/core_signing_key
+    AI16T_FINGERPRINT_KEY_FILE: /run/ai16t/fingerprint_key
+    AI16T_PUBLIC_MODEL: ai16t-mock
+    AI16T_CORE_MODEL: gpt-4o-mini
+  depends_on:
+    postgres:
+      condition: service_healthy
+    redis:
+      condition: service_healthy
+    commercial-core:
+      condition: service_healthy
+  volumes:
+    - ./.runtime/core_signing_key:/run/ai16t/core_signing_key:ro
+    - ./.runtime/fingerprint_key:/run/ai16t/fingerprint_key:ro
+  networks:
+    - platform_b_staging_private
+    - platform_b_staging_loopback
+  healthcheck:
+    test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:8080/ready"]
+    interval: 5s
+    timeout: 3s
+    retries: 30
+
+services:
+  sub2api-blue:
+    <<: *sub2api-slot
+    ports:
+      - "127.0.0.1:${STAGING_BLUE_PORT:-18181}:8080"
+    volumes:
+      - sub2api_blue_data:/app/data
+      - ./.runtime/core_signing_key:/run/ai16t/core_signing_key:ro
+      - ./.runtime/fingerprint_key:/run/ai16t/fingerprint_key:ro
+
+  sub2api-green:
+    <<: *sub2api-slot
+    ports:
+      - "127.0.0.1:${STAGING_GREEN_PORT:-18182}:8080"
+    volumes:
+      - sub2api_green_data:/app/data
+      - ./.runtime/core_signing_key:/run/ai16t/core_signing_key:ro
+      - ./.runtime/fingerprint_key:/run/ai16t/fingerprint_key:ro
+
+  migration-check:
+    <<: *sub2api-slot
+    profiles: ["migration-check"]
+    environment:
+      <<: *sub2api-environment
+      DATABASE_DBNAME: ai16t_sub2api_restore_verify
+      AI16T_HYBRID_ENABLED: "false"
+    volumes:
+      - migration_check_data:/app/data
+      - ./.runtime/core_signing_key:/run/ai16t/core_signing_key:ro
+      - ./.runtime/fingerprint_key:/run/ai16t/fingerprint_key:ro
+    networks:
+      - platform_b_staging_private
+
+  commercial-core:
+    platform: linux/amd64
+    build:
+      context: ${AI16T_CORE_SOURCE_DIR:-/Users/hhhh/Projects/ai16t-commercial-core}
+      dockerfile: Dockerfile
+      args:
+        TP_OCI_REVISION: 56108397f31a97926f33d28420e9b44a52547bd2
+        TP_OCI_TREE: 6057218ef7291f5d9fb493e8fb7b02fa059ef049
+        TP_EVIDENCE_RUN_ID: sub2api-ai16t-mac1-staging
+    image: ai16t-commercial-core-sub2api-staging:56108397
+    restart: "no"
+    init: true
+    entrypoint: ["python", "/bridge/core_bridge.py"]
+    security_opt:
+      - no-new-privileges:true
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,mode=1777
+    environment:
+      PYTHONPATH: /app:/opt/cpython/lib/python3.12/site-packages
+      TP_BIND_HOST: 0.0.0.0
+      TP_CONTAINER_ISOLATION_ACK: "1"
+      TP_DATABASE_PATH: /data/token-platform.sqlite3
+      TP_RUNTIME_MODE: isolated-test
+      TP_TEST_MODE: mock-only-enabled
+      TP_MIN_PROFIT_MARGIN_PPM: "100000"
+      AI16T_CORE_SIGNING_KEY_FILE: /run/ai16t/core_signing_key
+      AI16T_MOCK_PROVIDER_KEY_FILE: /run/ai16t/mock_provider_key
+      AI16T_MOCK_PROVIDER_URL: http://mock-provider:9090
+      AI16T_INITIAL_CREDIT_MICRO: "200000"
+    depends_on:
+      mock-provider:
+        condition: service_healthy
+    volumes:
+      - core_data:/data
+      - ../core_bridge.py:/bridge/core_bridge.py:ro
+      - ../core_evidence.py:/evidence/core_evidence.py:ro
+      - ./core_backup.py:/staging/core_backup.py:ro
+      - ./.runtime/core_signing_key:/run/ai16t/core_signing_key:ro
+      - ./.runtime/mock_provider_key:/run/ai16t/mock_provider_key:ro
+    networks:
+      - platform_b_staging_private
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8787/health', timeout=2).read()"
+      interval: 5s
+      timeout: 3s
+      retries: 30
+
+  mock-provider:
+    platform: linux/amd64
+    image: ai16t-commercial-core-sub2api-staging:56108397
+    restart: "no"
+    init: true
+    entrypoint: ["python", "/mock/mock_provider.py"]
+    security_opt:
+      - no-new-privileges:true
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,mode=1777
+    environment:
+      AI16T_MOCK_PROVIDER_KEY_FILE: /run/ai16t/mock_provider_key
+    volumes:
+      - ../mock_provider.py:/mock/mock_provider.py:ro
+      - ./.runtime/mock_provider_key:/run/ai16t/mock_provider_key:ro
+    networks:
+      - platform_b_staging_private
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request; urllib.request.urlopen('http://127.0.0.1:9090/health', timeout=2).read()"
+      interval: 5s
+      timeout: 3s
+      retries: 30
+
+  postgres:
+    image: postgres:18-alpine
+    restart: "no"
+    security_opt:
+      - no-new-privileges:true
+    environment:
+      POSTGRES_USER: ai16t_sub2api_staging
+      POSTGRES_PASSWORD_FILE: /run/ai16t/database_password
+      POSTGRES_DB: ai16t_sub2api_staging
+      TZ: Asia/Kuala_Lumpur
+    volumes:
+      - postgres_data:/var/lib/postgresql
+      - postgres_backup:/backup
+      - ./.runtime/database_password:/run/ai16t/database_password:ro
+    networks:
+      - platform_b_staging_private
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ai16t_sub2api_staging -d ai16t_sub2api_staging"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+
+  redis:
+    image: redis:8-alpine
+    restart: "no"
+    security_opt:
+      - no-new-privileges:true
+    command:
+      - sh
+      - -eu
+      - -c
+      - |
+        umask 077
+        REDIS_PASSWORD="$$(cat /run/ai16t/redis_password)"
+        case "$${REDIS_PASSWORD}" in
+          *[!A-Za-z0-9_@%+=:,.-]*) exit 1 ;;
+        esac
+        printf 'appendonly yes\nrequirepass %s\n' "$${REDIS_PASSWORD}" > /tmp/redis.conf
+        exec redis-server /tmp/redis.conf
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,mode=1777
+    volumes:
+      - redis_data:/data
+      - ./.runtime/redis_password:/run/ai16t/redis_password:ro
+    networks:
+      - platform_b_staging_private
+    healthcheck:
+      test: ["CMD-SHELL", "REDISCLI_AUTH=\"$$(cat /run/ai16t/redis_password)\" redis-cli ping | grep -q PONG"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+
+networks:
+  platform_b_staging_private:
+    name: sub2api-ai16t-mac1-staging-private
+    internal: true
+  platform_b_staging_loopback:
+    name: sub2api-ai16t-mac1-staging-loopback
+
+volumes:
+  sub2api_blue_data:
+    name: sub2api-ai16t-mac1-staging-blue-data
+  sub2api_green_data:
+    name: sub2api-ai16t-mac1-staging-green-data
+  migration_check_data:
+    name: sub2api-ai16t-mac1-staging-migration-check-data
+  postgres_data:
+    name: sub2api-ai16t-mac1-staging-postgres-data
+  postgres_backup:
+    name: sub2api-ai16t-mac1-staging-postgres-backup
+  redis_data:
+    name: sub2api-ai16t-mac1-staging-redis-data
+  core_data:
+    name: sub2api-ai16t-mac1-staging-core-data
