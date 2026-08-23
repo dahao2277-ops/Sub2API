@@ -77,4 +77,32 @@ if [ ! -f "$runtime_dir/hybrid.env" ]; then
 fi
 chmod 0600 "$runtime_dir/hybrid.env"
 
+env_value() {
+  key="$1"
+  awk -F= -v wanted="$key" '$1 == wanted {sub(/^[^=]*=/, ""); print; exit}' \
+    "$runtime_dir/hybrid.env"
+}
+
+database_password="$(env_value DATABASE_PASSWORD)"
+redis_password="$(env_value REDIS_PASSWORD)"
+if [ -z "$database_password" ] || [ -z "$redis_password" ]; then
+  echo "Hybrid runtime is missing database or Redis credentials" >&2
+  exit 1
+fi
+printf '%s\n' "$database_password" > "$runtime_dir/database_password"
+printf '%s\n' "$redis_password" > "$runtime_dir/redis_password"
+awk -F= '
+  $1 == "DATABASE_PASSWORD" ||
+  $1 == "REDIS_PASSWORD" ||
+  $1 == "ADMIN_EMAIL" ||
+  $1 == "ADMIN_PASSWORD" ||
+  $1 == "JWT_SECRET" ||
+  $1 == "TOTP_ENCRYPTION_KEY" { print }
+' "$runtime_dir/hybrid.env" > "$runtime_dir/sub2api.env"
+chmod 0600 \
+  "$runtime_dir/database_password" \
+  "$runtime_dir/redis_password" \
+  "$runtime_dir/sub2api.env"
+unset database_password redis_password
+
 echo "MAC1_HYBRID_RUNTIME_READY"

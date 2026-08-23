@@ -13,7 +13,7 @@ services:
     ports:
       - "127.0.0.1:${AI16T_SUB2API_PORT:-18080}:8080"
     env_file:
-      - .runtime/hybrid.env
+      - .runtime/sub2api.env
     environment:
       AUTO_SETUP: "true"
       SERVER_HOST: 0.0.0.0
@@ -30,6 +30,7 @@ services:
       TZ: Asia/Kuala_Lumpur
       AI16T_HYBRID_ENABLED: "true"
       AI16T_ISOLATED_TEST_MODE: "true"
+      AI16T_ISOLATED_TEST_HOOKS_ENABLED: "true"
       AI16T_CORE_URL: http://commercial-core:8787
       AI16T_CORE_SIGNING_KEY_FILE: /run/ai16t/core_signing_key
       AI16T_FINGERPRINT_KEY_FILE: /run/ai16t/fingerprint_key
@@ -73,8 +74,6 @@ services:
     read_only: true
     tmpfs:
       - /tmp:rw,noexec,nosuid,nodev,mode=1777
-    env_file:
-      - .runtime/hybrid.env
     environment:
       PYTHONPATH: /app:/opt/cpython/lib/python3.12/site-packages
       TP_BIND_HOST: 0.0.0.0
@@ -139,16 +138,15 @@ services:
   postgres:
     image: postgres:18-alpine
     restart: "no"
-    env_file:
-      - .runtime/hybrid.env
     environment:
       POSTGRES_USER: ai16t_sub2api
-      POSTGRES_PASSWORD: ${DATABASE_PASSWORD:?required}
+      POSTGRES_PASSWORD_FILE: /run/ai16t/database_password
       POSTGRES_DB: ai16t_sub2api
       TZ: Asia/Kuala_Lumpur
     volumes:
       - postgres_data:/var/lib/postgresql
       - postgres_backup:/backup
+      - ./.runtime/database_password:/run/ai16t/database_password:ro
     networks:
       - platform_b_private
     healthcheck:
@@ -160,14 +158,13 @@ services:
   redis:
     image: redis:8-alpine
     restart: "no"
-    env_file:
-      - .runtime/hybrid.env
     command:
       - sh
       - -eu
       - -c
       - |
         umask 077
+        REDIS_PASSWORD="$$(cat /run/ai16t/redis_password)"
         case "$${REDIS_PASSWORD}" in
           *[!A-Za-z0-9_@%+=:,.-]*) exit 1 ;;
         esac
@@ -177,10 +174,11 @@ services:
       - /tmp:rw,noexec,nosuid,nodev,mode=1777
     volumes:
       - redis_data:/data
+      - ./.runtime/redis_password:/run/ai16t/redis_password:ro
     networks:
       - platform_b_private
     healthcheck:
-      test: ["CMD-SHELL", "REDISCLI_AUTH=\"$${REDIS_PASSWORD}\" redis-cli ping | grep -q PONG"]
+      test: ["CMD-SHELL", "REDISCLI_AUTH=\"$$(cat /run/ai16t/redis_password)\" redis-cli ping | grep -q PONG"]
       interval: 5s
       timeout: 3s
       retries: 30

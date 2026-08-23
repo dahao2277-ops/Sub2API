@@ -16,6 +16,7 @@ import (
 
 	"github.com/Wei-Shaw/sub2api/internal/integration/ai16tadapter"
 	"github.com/Wei-Shaw/sub2api/internal/server/middleware"
+	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/gin-gonic/gin"
 	"github.com/redis/go-redis/v9"
 )
@@ -29,6 +30,7 @@ type ai16tHybridHandler struct {
 	publicModel    string
 	coreModel      string
 	isolatedTest   bool
+	emergencyGate  *ai16tadapter.EmergencyDriftGate
 }
 
 func RegisterAI16THybridRoutes(
@@ -62,7 +64,8 @@ func RegisterAI16THybridRoutes(
 		fingerprintKey: fingerprintKey,
 		publicModel:    envOrDefault("AI16T_PUBLIC_MODEL", "ai16t-mock"),
 		coreModel:      envOrDefault("AI16T_CORE_MODEL", "gpt-4o-mini"),
-		isolatedTest:   os.Getenv("AI16T_ISOLATED_TEST_MODE") == "true",
+		isolatedTest:   isolatedTestHooksEnabled(),
+		emergencyGate:  ai16tadapter.NewEmergencyDriftGate(),
 	}
 
 	r.GET("/ready", handler.ready)
@@ -137,16 +140,17 @@ func (h *ai16tHybridHandler) execute(c *gin.Context) {
 			APICredentialID: strconv.FormatInt(apiKey.ID, 10),
 			Group:           group,
 			UserEnabled:     apiKey.User.IsActive(),
-			KeyRevoked:      !apiKey.IsActive(),
+			KeyRevoked:      ai16tAPIKeyRevoked(apiKey.Status),
 		},
 	}
-	adapter, err := ai16tadapter.New(
+	adapter, err := ai16tadapter.NewWithEmergencyDriftGate(
 		identity,
 		ai16tadapter.StaticModelSource{PublicModel: h.publicModel, CoreModel: h.coreModel},
 		h.core,
 		h.projections,
 		h.projections,
 		h.fingerprintKey,
+		h.emergencyGate,
 	)
 	if err != nil {
 		middleware.AbortWithError(c, http.StatusServiceUnavailable, "AI16T_UNAVAILABLE", "hybrid adapter unavailable")
@@ -242,6 +246,7 @@ func (h *ai16tHybridHandler) reconcile(c *gin.Context) {
 		middleware.AbortWithError(c, http.StatusServiceUnavailable, "AI16T_RECONCILIATION_FAILED", "Ledger-driven reconciliation failed")
 		return
 	}
+	h.emergencyGate.Clear(projection.UserReference)
 	c.JSON(http.StatusOK, gin.H{"status": "reconciled", "authority": "LEDGER_WINS", "projection": projection})
 }
 
@@ -285,6 +290,15 @@ func envOrDefault(key, fallback string) string {
 		return value
 	}
 	return fallback
+}
+
+func isolatedTestHooksEnabled() bool {
+	return os.Getenv("AI16T_ISOLATED_TEST_MODE") == "true" &&
+		os.Getenv("AI16T_ISOLATED_TEST_HOOKS_ENABLED") == "true"
+}
+
+func ai16tAPIKeyRevoked(status string) bool {
+	return status != service.StatusAPIKeyActive && status != service.StatusAPIKeyQuotaExhausted
 }
 
 func readMode0600Secret(path string) ([]byte, error) {

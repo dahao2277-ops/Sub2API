@@ -247,9 +247,53 @@ func TestCanonicalRequestHashBindsIdentityModelAndPayload(t *testing.T) {
 	principal := Principal{UserID: "user-1", APICredentialID: "key-1"}
 	base := canonicalRequestHash(principal, "model-a", []byte("payload-a"))
 	require.Equal(t, base, canonicalRequestHash(principal, "model-a", []byte("payload-a")))
+	require.Equal(t, base, canonicalRequestHash(Principal{UserID: "user-1", APICredentialID: "key-2"}, "model-a", []byte("payload-a")))
 	require.NotEqual(t, base, canonicalRequestHash(principal, "model-a", []byte("payload-b")))
 	require.NotEqual(t, base, canonicalRequestHash(principal, "model-b", []byte("payload-a")))
 	require.NotEqual(t, base, canonicalRequestHash(Principal{UserID: "user-2", APICredentialID: "key-1"}, "model-a", []byte("payload-a")))
+}
+
+func TestEmergencyDriftPersistsAcrossAdapterInstances(t *testing.T) {
+	first, identity, core, projections, drift := validFixture(t)
+	sharedGate := NewEmergencyDriftGate()
+	var err error
+	first, err = NewWithEmergencyDriftGate(
+		identity,
+		&modelStub{mapping: ModelMapping{PublicModel: "public-model", CoreModel: "core-model"}},
+		core,
+		projections,
+		drift,
+		[]byte(strings.Repeat("k", 32)),
+		sharedGate,
+	)
+	require.NoError(t, err)
+	projections.err = errors.New("projection unavailable")
+	drift.recordErr = errors.New("drift store unavailable")
+
+	result, err := first.Execute(context.Background(), validRequest())
+	require.NoError(t, err)
+	require.True(t, result.ProjectionDrift)
+
+	secondCore := &coreStub{result: core.result}
+	second, err := NewWithEmergencyDriftGate(
+		identity,
+		&modelStub{mapping: ModelMapping{PublicModel: "public-model", CoreModel: "core-model"}},
+		secondCore,
+		&projectionStub{},
+		&driftStub{allowed: true},
+		[]byte(strings.Repeat("k", 32)),
+		sharedGate,
+	)
+	require.NoError(t, err)
+
+	_, err = second.Execute(context.Background(), validRequest())
+	require.ErrorIs(t, err, ErrProjectionDriftActive)
+	require.Zero(t, secondCore.calls)
+
+	sharedGate.Clear(identity.principal.UserID)
+	_, err = second.Execute(context.Background(), validRequest())
+	require.NoError(t, err)
+	require.Equal(t, 1, secondCore.calls)
 }
 
 func TestExecuteFailsClosedWhenDriftCannotBeRecorded(t *testing.T) {

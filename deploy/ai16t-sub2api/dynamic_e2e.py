@@ -80,6 +80,7 @@ class Harness:
         self.env = load_env()
         self.run_id = f"{int(time.time())}-{secrets.token_hex(4)}"
         self.results: list[dict[str, Any]] = []
+        self.key_ids: dict[str, int] = {}
         login = request(
             "POST",
             "/api/v1/auth/login",
@@ -148,6 +149,9 @@ class Harness:
         if login.status != 200:
             raise RuntimeError("user login failed")
         user_token = str(login.json()["data"]["access_token"])
+        return user_id, self.new_api_key(user_token, label), user_token
+
+    def new_api_key(self, user_token: str, label: str) -> str:
         key = request(
             "POST",
             "/api/v1/keys",
@@ -157,7 +161,61 @@ class Harness:
         )
         if key.status != 200:
             raise RuntimeError(f"create API key failed: HTTP {key.status}")
-        return user_id, str(key.json()["data"]["key"]), user_token
+        raw_key = str(key.json()["data"]["key"])
+        self.key_ids[raw_key] = int(key.json()["data"]["id"])
+        return raw_key
+
+    def set_key_auth_state(
+        self,
+        user_id: str,
+        api_key: str,
+        user_token: str,
+        status: str,
+        *,
+        expired: bool = False,
+    ) -> None:
+        if not user_id.isdigit() or status not in {"active", "disabled", "quota_exhausted"}:
+            raise ValueError("invalid isolated API key state")
+        expires = "NOW() - INTERVAL '1 minute'" if expired else "NULL"
+        subprocess.run(
+            [
+                "docker",
+                "compose",
+                "--env-file",
+                str(ENV_FILE),
+                "-f",
+                str(COMPOSE),
+                "exec",
+                "-T",
+                "postgres",
+                "psql",
+                "-XAt",
+                "-v",
+                f"fixture_user_id={user_id}",
+                "-v",
+                f"fixture_status={status}",
+                "-U",
+                "ai16t_sub2api",
+                "-d",
+                "ai16t_sub2api",
+            ],
+            input=(
+                "UPDATE api_keys SET status=:'fixture_status',expires_at="
+                + expires
+                + " WHERE user_id=:'fixture_user_id';\n"
+            ),
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        refreshed = request(
+            "PUT",
+            f"/api/v1/keys/{self.key_ids[api_key]}",
+            bearer=user_token,
+            payload={"name": f"Mac1 E2E auth refresh {secrets.token_hex(3)}"},
+        )
+        if refreshed.status != 200:
+            raise RuntimeError("isolated API key cache refresh failed")
 
     @staticmethod
     def chat_payload(content: str) -> dict[str, Any]:
@@ -221,10 +279,24 @@ class Harness:
         )
         self.check("MISSING_KEY_REJECTED", missing.status == 401)
 
-        idem_user, idem_key, _ = self.new_identity("idem")
+        idem_user, idem_key, idem_token = self.new_identity("idem")
         self.check("REAL_POSTGRES_AUTH", bool(idem_user) and bool(idem_key))
         invalid = self.chat("not-a-real-key", "invalid-key", "invalid")
-        self.check("REAL_API_KEY_AUTH", invalid.status == 401)
+        auth_user, auth_key, auth_token = self.new_identity("auth-states")
+        self.set_key_auth_state(auth_user, auth_key, auth_token, "quota_exhausted")
+        quota_ignored = self.chat(auth_key, "quota-is-not-authority", "ledger decides")
+        self.set_key_auth_state(auth_user, auth_key, auth_token, "active", expired=True)
+        expired = self.chat(auth_key, "expired-key", "must not execute")
+        self.set_key_auth_state(auth_user, auth_key, auth_token, "disabled")
+        disabled = self.chat(auth_key, "disabled-key", "must not execute")
+        self.set_key_auth_state(auth_user, auth_key, auth_token, "active")
+        self.check(
+            "REAL_API_KEY_AUTH",
+            invalid.status == 401
+            and quota_ignored.status == 200
+            and expired.status == 403
+            and disabled.status == 401,
+        )
         first = self.chat(idem_key, "idem-shared", "same payload")
         first_json = first.json() if first.status == 200 else {}
         self.check(
@@ -246,11 +318,16 @@ class Harness:
             == first_json.get("id"),
         )
         replay = self.chat(idem_key, "idem-shared", "same payload")
+        second_idem_key = self.new_api_key(idem_token, "idem-second-key")
+        cross_key_replay = self.chat(second_idem_key, "idem-shared", "same payload")
         self.check(
-            "IDEMPOTENT_REPLAY_SAME_REQUEST",
+            "IDEMPOTENT_ACCOUNT_SCOPE_ACROSS_KEYS",
             replay.status == 200
             and replay.json().get("id") == first_json.get("id")
-            and replay.headers.get("x-ai16t-idempotent-replay") == "true",
+            and replay.headers.get("x-ai16t-idempotent-replay") == "true"
+            and cross_key_replay.status == 200
+            and cross_key_replay.json().get("id") == first_json.get("id")
+            and cross_key_replay.headers.get("x-ai16t-idempotent-replay") == "true",
         )
         idem_evidence = self.evidence(idem_user)
         self.check(
@@ -259,7 +336,7 @@ class Harness:
             and idem_evidence["ledger_settlements"] == 1
             and idem_evidence["duplicate_settlements"] == 0,
         )
-        conflict = self.chat(idem_key, "idem-shared", "changed payload")
+        conflict = self.chat(second_idem_key, "idem-shared", "changed payload")
         self.check("IDEMPOTENCY_CONFLICT_REJECTED", conflict.status != 200)
 
         concurrent_user, concurrent_key, _ = self.new_identity("concurrent")
@@ -336,17 +413,17 @@ class Harness:
         failed_user, failed_key, _ = self.new_identity("failed")
         failed = self.chat(
             failed_key,
-            "all-failed",
-            "all failed",
+            "all-timeout",
+            "all timeout",
             extra_headers={
                 "X-AI16T-Test-Failure-Plan": json.dumps(
-                    {"openai-a": "5xx", "openai-b": "5xx"}
+                    {"openai-a": "timeout", "openai-b": "timeout"}
                 )
             },
         )
         failed_evidence = self.evidence(failed_user)
         self.check(
-            "ALL_PROVIDER_FAILURE_ZERO_CHARGE",
+            "ALL_PROVIDER_TIMEOUT_ZERO_CHARGE",
             failed.status == 502
             and failed_evidence["gross_charge_micro"] == 0
             and failed_evidence["ledger_settlements"] == 0,
@@ -377,6 +454,9 @@ class Harness:
             RUNTIME / "core_signing_key",
             RUNTIME / "fingerprint_key",
             RUNTIME / "mock_provider_key",
+            RUNTIME / "database_password",
+            RUNTIME / "redis_password",
+            RUNTIME / "sub2api.env",
             ENV_FILE,
         ]
         self.check(

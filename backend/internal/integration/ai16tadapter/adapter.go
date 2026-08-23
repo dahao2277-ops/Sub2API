@@ -22,7 +22,41 @@ type Adapter struct {
 	projections    ProjectionSink
 	driftGate      DriftGate
 	fingerprintKey []byte
-	driftedUsers   sync.Map
+	emergencyGate  *EmergencyDriftGate
+}
+
+// EmergencyDriftGate is the process-local fail-closed backstop used when both
+// the projection write and the durable drift marker write fail. It must be
+// shared by every Adapter instance serving the same process so a subsequent
+// request cannot forget an unresolved post-settlement drift.
+type EmergencyDriftGate struct {
+	driftedUsers sync.Map
+}
+
+func NewEmergencyDriftGate() *EmergencyDriftGate {
+	return &EmergencyDriftGate{}
+}
+
+func (g *EmergencyDriftGate) blocked(userReference string) bool {
+	if g == nil {
+		return true
+	}
+	_, blocked := g.driftedUsers.Load(userReference)
+	return blocked
+}
+
+func (g *EmergencyDriftGate) block(userReference string) {
+	if g != nil {
+		g.driftedUsers.Store(userReference, struct{}{})
+	}
+}
+
+// Clear is intentionally called only after a fresh Ledger projection has
+// atomically replaced the stale projection and cleared the durable drift gate.
+func (g *EmergencyDriftGate) Clear(userReference string) {
+	if g != nil {
+		g.driftedUsers.Delete(userReference)
+	}
 }
 
 func New(
@@ -33,8 +67,31 @@ func New(
 	driftGate DriftGate,
 	fingerprintKey []byte,
 ) (*Adapter, error) {
+	return NewWithEmergencyDriftGate(
+		identity,
+		models,
+		core,
+		projections,
+		driftGate,
+		fingerprintKey,
+		NewEmergencyDriftGate(),
+	)
+}
+
+func NewWithEmergencyDriftGate(
+	identity IdentitySource,
+	models ModelSource,
+	core CommercialCore,
+	projections ProjectionSink,
+	driftGate DriftGate,
+	fingerprintKey []byte,
+	emergencyGate *EmergencyDriftGate,
+) (*Adapter, error) {
 	if identity == nil || models == nil || core == nil || projections == nil || driftGate == nil {
 		return nil, fmt.Errorf("%w: dependencies are required", ErrInvalidRequest)
+	}
+	if emergencyGate == nil {
+		return nil, fmt.Errorf("%w: emergency drift gate is required", ErrInvalidRequest)
 	}
 	if len(fingerprintKey) < minimumFingerprintKeyBytes {
 		return nil, fmt.Errorf("%w: fingerprint key must contain at least %d bytes", ErrInvalidRequest, minimumFingerprintKeyBytes)
@@ -47,6 +104,7 @@ func New(
 		projections:    projections,
 		driftGate:      driftGate,
 		fingerprintKey: append([]byte(nil), fingerprintKey...),
+		emergencyGate:  emergencyGate,
 	}, nil
 }
 
@@ -71,7 +129,7 @@ func (a *Adapter) Execute(ctx context.Context, request Request) (Result, error) 
 	if strings.TrimSpace(principal.UserID) == "" || strings.TrimSpace(principal.APICredentialID) == "" {
 		return Result{}, ErrUnauthorized
 	}
-	if _, blocked := a.driftedUsers.Load(principal.UserID); blocked {
+	if a.emergencyGate.blocked(principal.UserID) {
 		return Result{}, ErrProjectionDriftActive
 	}
 	allowed, err := a.driftGate.AllowFinancialWrite(ctx, principal.UserID)
@@ -127,7 +185,7 @@ func (a *Adapter) Execute(ctx context.Context, request Request) (Result, error) 
 	}
 	if err := a.projections.Publish(ctx, projection); err != nil {
 		result.ProjectionDrift = true
-		a.driftedUsers.Store(principal.UserID, struct{}{})
+		a.emergencyGate.block(principal.UserID)
 		recordCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), postSettlementDriftTimeout)
 		defer cancel()
 		if recordErr := a.driftGate.RecordProjectionDrift(recordCtx, projection, err); recordErr != nil {
@@ -156,7 +214,7 @@ func (a *Adapter) ReconcileProjection(ctx context.Context, projection Projection
 	if err := a.driftGate.ReconcileProjection(ctx, projection); err != nil {
 		return ErrDriftStateUnavailable
 	}
-	a.driftedUsers.Delete(projection.UserReference)
+	a.emergencyGate.Clear(projection.UserReference)
 	return nil
 }
 
@@ -176,7 +234,6 @@ func canonicalRequestHash(principal Principal, coreModel string, payload []byte)
 	digest := sha256.New()
 	writeHashField(digest, []byte("ai16t-sub2api-request-v1"))
 	writeHashField(digest, []byte(principal.UserID))
-	writeHashField(digest, []byte(principal.APICredentialID))
 	writeHashField(digest, []byte(coreModel))
 	writeHashField(digest, payload)
 	return hex.EncodeToString(digest.Sum(nil))

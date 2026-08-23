@@ -151,6 +151,33 @@ class HybridAuthority:
                 PRIMARY KEY(external_user_reference,external_key_reference))"""
             )
             connection.execute(
+                """CREATE TABLE IF NOT EXISTS sub2api_user_authority(
+                external_user_reference TEXT PRIMARY KEY,
+                core_user_id INTEGER NOT NULL REFERENCES users(id),
+                core_api_key_id INTEGER NOT NULL REFERENCES api_keys(id),
+                created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')))"""
+            )
+            connection.execute(
+                """INSERT OR IGNORE INTO sub2api_user_authority(
+                external_user_reference,core_user_id,core_api_key_id)
+                SELECT legacy.external_user_reference,legacy.core_user_id,legacy.core_api_key_id
+                FROM sub2api_identity_map legacy
+                WHERE legacy.rowid=(
+                    SELECT MIN(first_mapping.rowid) FROM sub2api_identity_map first_mapping
+                    WHERE first_mapping.external_user_reference=legacy.external_user_reference)"""
+            )
+            divergent = connection.execute(
+                """SELECT external_user_reference FROM sub2api_identity_map
+                GROUP BY external_user_reference
+                HAVING COUNT(DISTINCT core_user_id || ':' || core_api_key_id) > 1
+                LIMIT 1"""
+            ).fetchone()
+            if divergent:
+                raise RuntimeError(
+                    "legacy Sub2API account has divergent Core authorities; "
+                    "explicit Ledger migration is required"
+                )
+            connection.execute(
                 """CREATE TABLE IF NOT EXISTS bridge_nonces(
                 nonce TEXT PRIMARY KEY, expires_at INTEGER NOT NULL)"""
             )
@@ -193,31 +220,39 @@ class HybridAuthority:
         with self.identity_lock:
             with self.platform.database.read() as connection:
                 row = connection.execute(
-                    """SELECT core_user_id,core_api_key_id FROM sub2api_identity_map
-                    WHERE external_user_reference=? AND external_key_reference=?""",
-                    (external_user, external_key),
-                ).fetchone()
-                if row:
-                    return int(row["core_user_id"]), int(row["core_api_key_id"])
-                user_row = connection.execute(
-                    """SELECT core_user_id FROM sub2api_identity_map
-                    WHERE external_user_reference=? LIMIT 1""",
+                    """SELECT core_user_id,core_api_key_id FROM sub2api_user_authority
+                    WHERE external_user_reference=?""",
                     (external_user,),
                 ).fetchone()
-            if user_row:
-                user_id = int(user_row["core_user_id"])
-            else:
-                password = secrets.token_urlsafe(32)
-                user_id = self.platform.register_user(
-                    f"sub2api-{external_user}@isolated.invalid", password
-                )
-                self.platform.add_test_credit(
-                    user_id,
-                    int(os.getenv("AI16T_INITIAL_CREDIT_MICRO", "200000")),
-                    f"sub2api-bootstrap-{external_user}",
-                )
+            if row:
+                user_id = int(row["core_user_id"])
+                api_key_id = int(row["core_api_key_id"])
+                with self.platform.database.transaction() as connection:
+                    connection.execute(
+                        """INSERT OR IGNORE INTO sub2api_identity_map(
+                        external_user_reference,external_key_reference,
+                        core_user_id,core_api_key_id) VALUES (?,?,?,?)""",
+                        (external_user, external_key, user_id, api_key_id),
+                    )
+                return user_id, api_key_id
+
+            password = secrets.token_urlsafe(32)
+            user_id = self.platform.register_user(
+                f"sub2api-{external_user}@isolated.invalid", password
+            )
+            self.platform.add_test_credit(
+                user_id,
+                int(os.getenv("AI16T_INITIAL_CREDIT_MICRO", "200000")),
+                f"sub2api-bootstrap-{external_user}",
+            )
             api_key_id, _discarded_raw = self.platform.create_api_key(user_id)
             with self.platform.database.transaction() as connection:
+                connection.execute(
+                    """INSERT INTO sub2api_user_authority(
+                    external_user_reference,core_user_id,core_api_key_id)
+                    VALUES (?,?,?)""",
+                    (external_user, user_id, api_key_id),
+                )
                 connection.execute(
                     """INSERT INTO sub2api_identity_map(
                     external_user_reference,external_key_reference,core_user_id,core_api_key_id)
@@ -255,7 +290,7 @@ class HybridAuthority:
         if not idempotency_key or not request_hash or model != "gpt-4o-mini":
             raise ValueError("invalid authority request")
         authoritative_request_id = "sub2_" + hashlib.sha256(
-            f"{user_id}\0{api_key_id}\0{idempotency_key}".encode()
+            f"{user_id}\0{idempotency_key}".encode()
         ).hexdigest()[:40]
         replay = self._request_replay(authoritative_request_id)
         settlement = self.platform.process_request(
