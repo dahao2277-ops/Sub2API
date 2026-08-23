@@ -86,6 +86,8 @@ services:
           cat /run/secrets/redis_password
           printf '\n'
         } > /tmp/redis.conf
+        chown redis:redis /tmp/redis.conf
+        chmod 0600 /tmp/redis.conf
         exec gosu redis redis-server /tmp/redis.conf
     secrets:
       - redis_password
