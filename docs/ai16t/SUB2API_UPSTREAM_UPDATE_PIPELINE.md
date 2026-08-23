@@ -7,6 +7,14 @@
 - 稳定分支：`main`；当前部署：`production`；下一版本：`develop`。
 - 开发：`feature/*` 或 `ai/*`；生产修复：`hotfix/*`；官方同步：`upstream-sync/*`。
 
+## 当前基线
+
+- locked release：`v0.1.179`
+- locked commit：`75f88be5f75c27771836b586f7de1503afa0e3bc`
+- latest release：`v0.1.179`
+- upstream main：`d45135d87df16d48637f04ccd245727bc955ba54`
+- 状态：正式 release 无新版；main 有后续提交，需 review，不自动升级。
+
 ## Pipeline
 
 ```text
@@ -25,7 +33,7 @@ detect release (read-only)
  -> explicit production approval
 ```
 
-禁止 release 触发器直接更新 Production。若无 mandatory Critical/High 修复，基线只记录 `UPDATE_AVAILABLE`。若 migration 破坏旧版本兼容，报告 `MAINTENANCE_WINDOW_MAY_BE_REQUIRED`。
+禁止 release 触发器直接更新 Production。若无 mandatory Critical/High 修复，基线只记录 `UPDATE_AVAILABLE`。v0.1.179 release 线包含 migration 226/227/228 与 long-context billing 行为变化，采用前必须执行 backup、DB clone migration、兼容和 rollback 测试。若 migration 破坏旧版本兼容，报告 `MAINTENANCE_WINDOW_MAY_BE_REQUIRED`。
 
 ## 判断分类
 

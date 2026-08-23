@@ -16,9 +16,20 @@
 - 数据库、Redis、日志、HTTP error、Admin UI、backup、trace、crash dump 和测试 snapshot 均不得出现明文。
 - 当前只允许 test key；生产密钥接入前单独执行 secret lifecycle/rotation/backup restore 审计。
 
+## 当前官方 Advisory 核验
+
+| Advisory | Severity | 官方受影响范围 | 修复版本 | v0.1.179 |
+|---|---|---|---|---|
+| `GHSA-vrxq-qm4h-6hgg` / `CVE-2026-73079` | High | `>=0.1.135, <=0.1.168` | `0.1.169` | 不在范围内 |
+| `GHSA-vc2q-289v-74g3` / `CVE-2026-27812` | High | `<0.1.85` | `0.1.85` | 不在范围内 |
+
+以上不替代对实际 artifact 的动态复核。
+
 ## 动态安全复核
 
 对 v0.1.179 实际代码重新验证：path traversal、OAuth pending exchange、token leakage、XSS、SSRF、privilege escalation、quota bypass、payment callback、URL allowlist、API Key storage。旧报告仅作为线索，不作为永久结论。
+
+分类只使用：`OFFICIAL_ADVISORY`、`CONFIRMED_REPRODUCIBLE`、`OPEN_REPORT_UNCONFIRMED`、`FALSE_POSITIVE`、`REVALIDATION_REQUIRED`。当前除已修复范围的两条官方 Advisory 外，其余列项均为 `REVALIDATION_REQUIRED`；本轮未确认新的 reproducible 漏洞，也没有证据把它们标为 false positive。
 
 ## 运行与发布
 
