@@ -182,6 +182,15 @@ func TestExecuteRejectsChargeOnFailedRequest(t *testing.T) {
 	require.Zero(t, projections.calls)
 }
 
+func TestExecuteRejectsNegativeTokenCounts(t *testing.T) {
+	adapter, _, core, projections, _ := validFixture(t)
+	core.result.InputTokens = -1
+
+	_, err := adapter.Execute(context.Background(), validRequest())
+	require.ErrorIs(t, err, ErrInvalidAuthorityResult)
+	require.Zero(t, projections.calls)
+}
+
 func TestExecuteReportsProjectionDriftWithoutRebilling(t *testing.T) {
 	adapter, _, core, projections, drift := validFixture(t)
 	projectionErr := errors.New("projection database unavailable")

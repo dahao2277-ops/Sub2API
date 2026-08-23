@@ -6,7 +6,7 @@
 
 使用前必须：
 
-1. 在本地 shell 临时注入所有 `AI16T_SUB2API_*` 必填值，不把值写入仓库或命令历史。
+1. 在本地 shell 临时注入所有 `AI16T_SUB2API_*` 必填值，不把值写入仓库或命令历史。Redis sandbox 密码至少 16 个字符，并仅允许 ASCII 字母、数字和 `_@%+=:,.-`，以避免 Redis 配置语法注入。
 2. 将 pinned Commercial Core 和 Mock Provider 以独立服务接入 private network。
 3. 先运行 `tools/ai16t/check_isolation.sh`。
 4. 获得 Docker/端口独占锁后才启动；不得复用平台 A 容器、端口、volume 或数据库。

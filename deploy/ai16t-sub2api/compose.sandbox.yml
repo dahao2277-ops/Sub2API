@@ -80,12 +80,19 @@ services:
       - -c
       - |
         umask 077
-        {
-          printf 'appendonly yes\n'
-          printf 'requirepass '
-          cat /run/secrets/redis_password
-          printf '\n'
-        } > /tmp/redis.conf
+        redis_password="$$(cat /run/secrets/redis_password)"
+        if [ "$${#redis_password}" -lt 16 ]; then
+          echo "Redis sandbox password must contain at least 16 characters" >&2
+          exit 1
+        fi
+        case "$$redis_password" in
+          *[!A-Za-z0-9_@%+=:,.-]*)
+            echo "Redis sandbox password contains unsupported characters" >&2
+            exit 1
+            ;;
+        esac
+        printf 'appendonly yes\nrequirepass %s\n' "$$redis_password" > /tmp/redis.conf
+        unset redis_password
         chown redis:redis /tmp/redis.conf
         chmod 0600 /tmp/redis.conf
         exec gosu redis redis-server /tmp/redis.conf

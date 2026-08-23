@@ -185,7 +185,8 @@ func validateCoreResult(result CoreResult) error {
 	if strings.TrimSpace(result.AuthoritativeRequestID) == "" {
 		return ErrInvalidAuthorityResult
 	}
-	if result.CustomerChargeMicro < 0 || result.ProviderCostMicro < 0 || result.BalanceAfterMicro < 0 {
+	if result.InputTokens < 0 || result.OutputTokens < 0 ||
+		result.CustomerChargeMicro < 0 || result.ProviderCostMicro < 0 || result.BalanceAfterMicro < 0 {
 		return ErrInvalidAuthorityResult
 	}
 	switch result.Status {
