@@ -22,7 +22,9 @@ Sub2API User -> Sub2API API Key -> Sub2APIAdapter -> AI16T Commercial Core -> Dy
 - Reject revoked keys, disabled users and missing model mappings before calling Core.
 - Forward the exact idempotency key to Core; compute the request hash inside the trusted Adapter boundary from identity, credential, Core model and payload.
 - Reject a billable Core result without an authoritative request ID and Ledger reference.
-- Publish only a read-only projection; persist `PROJECTION_DRIFT` in a durable gate without repeating the Core call, and block later financial calls until reconciliation.
+- Publish only a read-only projection; persist `PROJECTION_DRIFT` with a bounded post-settlement context that survives client cancellation, set a local emergency block, and block later financial calls until explicit Ledger reconciliation.
+- After Core settlement, return `FinanciallyCommitted=true` even when projection/drift persistence degrades; never turn a committed charge into a generic transport failure that invites retries.
+- The local emergency block is defense in depth, not durable recovery. Production wiring must back `DriftGate` with a durable outbox/gate keyed by authoritative request ID and must remain closed across process restart.
 
 ## Supporting Core operations
 

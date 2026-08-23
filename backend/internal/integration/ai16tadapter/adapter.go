@@ -8,9 +8,12 @@ import (
 	"encoding/hex"
 	"fmt"
 	"strings"
+	"sync"
+	"time"
 )
 
 const minimumFingerprintKeyBytes = 32
+const postSettlementDriftTimeout = 3 * time.Second
 
 type Adapter struct {
 	identity       IdentitySource
@@ -19,6 +22,7 @@ type Adapter struct {
 	projections    ProjectionSink
 	driftGate      DriftGate
 	fingerprintKey []byte
+	driftedUsers   sync.Map
 }
 
 func New(
@@ -67,6 +71,9 @@ func (a *Adapter) Execute(ctx context.Context, request Request) (Result, error) 
 	if strings.TrimSpace(principal.UserID) == "" || strings.TrimSpace(principal.APICredentialID) == "" {
 		return Result{}, ErrUnauthorized
 	}
+	if _, blocked := a.driftedUsers.Load(principal.UserID); blocked {
+		return Result{}, ErrProjectionDriftActive
+	}
 	allowed, err := a.driftGate.AllowFinancialWrite(ctx, principal.UserID)
 	if err != nil {
 		return Result{}, ErrDriftStateUnavailable
@@ -110,15 +117,35 @@ func (a *Adapter) Execute(ctx context.Context, request Request) (Result, error) 
 		Replay:                 coreResult.Replay,
 	}
 
-	result := Result{Core: cloneCoreResult(coreResult)}
+	result := Result{Core: cloneCoreResult(coreResult), FinanciallyCommitted: true}
 	if err := a.projections.Publish(ctx, projection); err != nil {
 		result.ProjectionDrift = true
-		if recordErr := a.driftGate.RecordProjectionDrift(ctx, projection, err); recordErr != nil {
-			return result, ErrDriftStateUnavailable
+		a.driftedUsers.Store(principal.UserID, struct{}{})
+		recordCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), postSettlementDriftTimeout)
+		defer cancel()
+		if recordErr := a.driftGate.RecordProjectionDrift(recordCtx, projection, err); recordErr != nil {
+			// The authoritative financial result has already committed. Returning a
+			// transport error here would invite unsafe client retries, so surface
+			// the partial-success state in Result and keep the local emergency
+			// block until explicit reconciliation.
+			return result, nil
 		}
 		result.DriftStateRecorded = true
 	}
 	return result, nil
+}
+
+// ClearProjectionDrift is an explicit reconciliation action. Callers must
+// first rebuild the Sub2API projection from the authoritative Ledger.
+func (a *Adapter) ClearProjectionDrift(ctx context.Context, userReference string) error {
+	if strings.TrimSpace(userReference) == "" {
+		return ErrInvalidRequest
+	}
+	if err := a.driftGate.ClearProjectionDrift(ctx, userReference); err != nil {
+		return ErrDriftStateUnavailable
+	}
+	a.driftedUsers.Delete(userReference)
+	return nil
 }
 
 func validateRequest(request Request) error {

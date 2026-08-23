@@ -95,9 +95,10 @@ type Projection struct {
 }
 
 type Result struct {
-	Core               CoreResult
-	ProjectionDrift    bool
-	DriftStateRecorded bool
+	Core                 CoreResult
+	FinanciallyCommitted bool
+	ProjectionDrift      bool
+	DriftStateRecorded   bool
 }
 
 // IdentitySource authenticates only a keyed fingerprint. The raw API key must
@@ -127,4 +128,5 @@ type ProjectionSink interface {
 type DriftGate interface {
 	AllowFinancialWrite(ctx context.Context, userReference string) (bool, error)
 	RecordProjectionDrift(ctx context.Context, projection Projection, cause error) error
+	ClearProjectionDrift(ctx context.Context, userReference string) error
 }

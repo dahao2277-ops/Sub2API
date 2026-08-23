@@ -8,7 +8,8 @@
 - [x] revoked key、disabled user、missing mapping 在调用 Core 前 fail closed。
 - [x] billable success 缺 Ledger reference 时 fail closed。
 - [x] failed request 出现非零 charge 时 fail closed。
-- [x] projection 失败写入 durable drift gate；gate 不可用或 drift 未清除时后续财务调用 fail closed。
+- [x] projection 失败通过独立有界 context 写入 durable drift gate，并设置本地紧急锁；客户端取消不取消结算后记录，后续调用在显式 reconciliation 前 fail closed。
+- [x] Core 已结算后的 projection 问题以 `FinanciallyCommitted`/drift 状态返回，不伪报 generic request failure。
 - [ ] 与 pinned Commercial Core 的真实接口完成编译期对接。
 
 ## 阶段 2：Hybrid dynamic E2E

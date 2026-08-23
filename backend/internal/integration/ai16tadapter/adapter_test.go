@@ -57,12 +57,15 @@ func (s *projectionStub) Publish(_ context.Context, projection Projection) error
 }
 
 type driftStub struct {
-	allowed     bool
-	allowErr    error
-	allowCalls  int
-	recordErr   error
-	recordCalls int
-	cause       error
+	allowed      bool
+	allowErr     error
+	allowCalls   int
+	recordErr    error
+	recordCalls  int
+	recordCtxErr error
+	clearErr     error
+	clearCalls   int
+	cause        error
 }
 
 func (s *driftStub) AllowFinancialWrite(_ context.Context, _ string) (bool, error) {
@@ -70,10 +73,20 @@ func (s *driftStub) AllowFinancialWrite(_ context.Context, _ string) (bool, erro
 	return s.allowed, s.allowErr
 }
 
-func (s *driftStub) RecordProjectionDrift(_ context.Context, _ Projection, cause error) error {
+func (s *driftStub) RecordProjectionDrift(ctx context.Context, _ Projection, cause error) error {
+	return s.recordProjectionDrift(ctx, cause)
+}
+
+func (s *driftStub) recordProjectionDrift(ctx context.Context, cause error) error {
 	s.recordCalls++
+	s.recordCtxErr = ctx.Err()
 	s.cause = cause
 	return s.recordErr
+}
+
+func (s *driftStub) ClearProjectionDrift(_ context.Context, _ string) error {
+	s.clearCalls++
+	return s.clearErr
 }
 
 func validFixture(t *testing.T) (*Adapter, *identityStub, *coreStub, *projectionStub, *driftStub) {
@@ -115,6 +128,7 @@ func TestExecutePassesOnlyReferencesToCommercialCore(t *testing.T) {
 
 	result, err := adapter.Execute(context.Background(), request)
 	require.NoError(t, err)
+	require.True(t, result.FinanciallyCommitted)
 	require.False(t, result.ProjectionDrift)
 	require.NotEqual(t, request.RawAPIKey, identity.fingerprint)
 	require.Len(t, identity.fingerprint, 64)
@@ -176,6 +190,7 @@ func TestExecuteReportsProjectionDriftWithoutRebilling(t *testing.T) {
 	result, err := adapter.Execute(context.Background(), validRequest())
 	require.NoError(t, err)
 	require.True(t, result.ProjectionDrift)
+	require.True(t, result.FinanciallyCommitted)
 	require.True(t, result.DriftStateRecorded)
 	require.Equal(t, 1, core.calls)
 	require.Equal(t, 1, projections.calls)
@@ -233,10 +248,45 @@ func TestExecuteFailsClosedWhenDriftCannotBeRecorded(t *testing.T) {
 	drift.recordErr = errors.New("drift store unavailable")
 
 	result, err := adapter.Execute(context.Background(), validRequest())
-	require.ErrorIs(t, err, ErrDriftStateUnavailable)
+	require.NoError(t, err)
+	require.True(t, result.FinanciallyCommitted)
 	require.True(t, result.ProjectionDrift)
 	require.False(t, result.DriftStateRecorded)
 	require.Equal(t, 1, core.calls)
+
+	_, err = adapter.Execute(context.Background(), validRequest())
+	require.ErrorIs(t, err, ErrProjectionDriftActive)
+	require.Equal(t, 1, core.calls)
+}
+
+func TestProjectionDriftRecordSurvivesCanceledRequestContext(t *testing.T) {
+	adapter, _, _, projections, drift := validFixture(t)
+	projections.err = errors.New("projection unavailable")
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	result, err := adapter.Execute(ctx, validRequest())
+	require.NoError(t, err)
+	require.True(t, result.FinanciallyCommitted)
+	require.True(t, result.DriftStateRecorded)
+	require.NoError(t, drift.recordCtxErr)
+}
+
+func TestClearProjectionDriftRequiresExplicitReconciliation(t *testing.T) {
+	adapter, _, core, projections, drift := validFixture(t)
+	projections.err = errors.New("projection unavailable")
+
+	_, err := adapter.Execute(context.Background(), validRequest())
+	require.NoError(t, err)
+	_, err = adapter.Execute(context.Background(), validRequest())
+	require.ErrorIs(t, err, ErrProjectionDriftActive)
+	require.Equal(t, 1, core.calls)
+
+	require.NoError(t, adapter.ClearProjectionDrift(context.Background(), "user-1"))
+	require.Equal(t, 1, drift.clearCalls)
+	_, err = adapter.Execute(context.Background(), validRequest())
+	require.NoError(t, err)
+	require.Equal(t, 2, core.calls)
 }
 
 func TestNewRequiresStrongFingerprintKey(t *testing.T) {

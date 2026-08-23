@@ -14,5 +14,6 @@
 | R-10 | migration 破坏旧版本兼容 | UNPROVEN | backup -> DB clone -> migration -> compatibility -> rollback；必要时报告维护窗口 |
 | R-11 | AI 项目工厂 CLI schema 24 > supported 4 | TOOLING_BLOCKER | 不修改共享控制面；本轮按同等规则手工编排，后续由 OS 维护任务修复 |
 | R-12 | 西班牙语仅为 English fallback + 起步翻译 | PARTIAL_I18N | 已纳入 message compile；后端安全完成后补齐 login/dashboard/key/models/usage/pricing/recharge/subscription/admin 并做母语复核 |
+| R-13 | projection 失败后 durable drift 写入也失败，进程内紧急锁无法跨重启保存 | RUNTIME_BLOCKER | 生产接线必须提供与 Ledger request ID 关联的 durable outbox/gate；故障注入验证写入失败、进程重启、reconciliation 和显式 clear，未通过前不得开放真实流量 |
 
 GitHub open issue 本身只能是 `OPEN_REPORT_UNCONFIRMED`，不能直接作为已确认漏洞或永久生产阻塞。

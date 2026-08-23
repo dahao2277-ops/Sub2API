@@ -43,7 +43,7 @@ Sub2API HTTP auth
 
 ## Projection drift
 
-Projection 写失败不回滚已经完成的权威 Ledger 交易，也不得触发第二次计费。适配器把 `PROJECTION_DRIFT` 写入 durable gate；gate 不可用或 drift 未由 Ledger reconciliation 清除时，后续财务调用 fail closed。修复只允许从 Ledger 重新投影。
+Projection 写失败不回滚已经完成的权威 Ledger 交易，也不得触发第二次计费。结算后的 drift 记录使用脱离客户端取消信号的独立有界 context；适配器同时设置进程内紧急锁并尝试写入 durable gate。结果明确返回 `FinanciallyCommitted=true` 与 drift 状态，不把“已收费但投影失败”伪装成 transport failure。后续财务调用 fail closed，只有从 Ledger 完成 reconciliation 并显式 clear 后才恢复。
 
 ## Secret 数据流
 
