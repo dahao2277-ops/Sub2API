@@ -49,4 +49,11 @@ if git remote get-url origin >/dev/null 2>&1; then
 else
   echo "ORIGIN_STATUS=OWNER_NAMESPACE_REQUIRED"
 fi
+echo "SECURITY_ADVISORIES_BEGIN"
+gh api repos/Wei-Shaw/sub2api/security-advisories --paginate \
+  --jq '.[] | [.ghsa_id, .severity, .vulnerabilities[0].vulnerable_version_range, .vulnerabilities[0].patched_versions, .html_url] | @tsv'
+echo "SECURITY_ADVISORIES_END"
+echo "MIGRATIONS_AFTER_BASELINE_BEGIN"
+git diff --name-only "$baseline_commit..upstream/main" -- backend/migrations
+echo "MIGRATIONS_AFTER_BASELINE_END"
 echo "UPSTREAM_CHECK=PASS"
