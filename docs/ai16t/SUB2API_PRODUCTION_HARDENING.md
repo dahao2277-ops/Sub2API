@@ -7,7 +7,7 @@
 3. 相同 key 不同 request hash 必须冲突并 fail closed。
 4. insufficient balance 不 dispatch；并发 reservation 不透支。
 5. timeout、retry、fallback、断线后重试最多结算一次；all-failed/customer-cancelled 未产生成果时扣费 0。
-6. projection 按 authoritative request ID 去重；漂移触发 `PROJECTION_DRIFT`，只从 Ledger 修复。
+6. projection 按 authoritative request ID 去重；漂移触发 durable `PROJECTION_DRIFT` gate。gate 不可用或未清除时后续财务调用 fail closed，只从 Ledger 修复。
 
 ## Secret
 

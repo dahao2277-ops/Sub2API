@@ -8,7 +8,7 @@ The canonical Sub2API-facing execution boundary lives under:
 
 `backend/internal/integration/ai16tadapter`
 
-Supporting Core financial and secret ports live under `backend/internal/ai16t/coreadapter`; the preliminary reserve/settle facade lives under `backend/internal/ai16t`. These packages remain isolated from upstream-heavy gateway, account, billing and UI modules until the pinned Commercial Core source is present. They are not wired into production routes.
+Supporting Core financial and secret ports live under `backend/internal/ai16t/coreadapter`. The earlier duplicate string-money facade was removed after independent review to prevent accidental wiring. These packages remain isolated from upstream-heavy gateway, account, billing and UI modules until the pinned Commercial Core source is present. They are not wired into production routes.
 
 ## Request Flow
 
@@ -20,9 +20,9 @@ Sub2API User -> Sub2API API Key -> Sub2APIAdapter -> AI16T Commercial Core -> Dy
 
 - Authenticate a keyed HMAC fingerprint, never pass the raw API Key to a dependency.
 - Reject revoked keys, disabled users and missing model mappings before calling Core.
-- Forward the exact idempotency key and request hash to Core.
+- Forward the exact idempotency key to Core; compute the request hash inside the trusted Adapter boundary from identity, credential, Core model and payload.
 - Reject a billable Core result without an authoritative request ID and Ledger reference.
-- Publish only a read-only projection; report `PROJECTION_DRIFT` without repeating the Core call.
+- Publish only a read-only projection; persist `PROJECTION_DRIFT` in a durable gate without repeating the Core call, and block later financial calls until reconciliation.
 
 ## Supporting Core operations
 

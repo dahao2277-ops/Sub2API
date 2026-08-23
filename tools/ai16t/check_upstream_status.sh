@@ -32,6 +32,7 @@ if [[ -z "$latest_release_commit" ]]; then
   latest_release_commit="$(git ls-remote "$expected_fetch" "refs/tags/$latest_tag" | awk 'NR==1 {print $1}')"
 fi
 upstream_main="$(git ls-remote "$expected_fetch" refs/heads/main | awk 'NR==1 {print $1}')"
+local_upstream_main="$(git rev-parse upstream/main)"
 
 echo "BASELINE_TAG=$baseline_tag"
 echo "BASELINE_COMMIT=$baseline_commit"
@@ -39,6 +40,11 @@ echo "WORKTREE_HEAD=$head_commit"
 echo "LATEST_RELEASE=$latest_tag"
 echo "LATEST_RELEASE_COMMIT=$latest_release_commit"
 echo "UPSTREAM_MAIN=$upstream_main"
+echo "LOCAL_UPSTREAM_MAIN=$local_upstream_main"
+if [[ "$local_upstream_main" != "$upstream_main" ]]; then
+  echo "UPSTREAM_CHECK=UNKNOWN_STALE_LOCAL_REF" >&2
+  exit 1
+fi
 if [[ "$latest_tag" == "$baseline_tag" ]]; then
   echo "RELEASE_STATUS=BASELINE_IS_LATEST_RELEASE"
 else

@@ -13,6 +13,6 @@
 | R-09 | Sub2API projection 被误用为财务 Authority | DESIGN_GUARD | Adapter contract 不接收 Sub2API financial input；漂移只从 Ledger 修复 |
 | R-10 | migration 破坏旧版本兼容 | UNPROVEN | backup -> DB clone -> migration -> compatibility -> rollback；必要时报告维护窗口 |
 | R-11 | AI 项目工厂 CLI schema 24 > supported 4 | TOOLING_BLOCKER | 不修改共享控制面；本轮按同等规则手工编排，后续由 OS 维护任务修复 |
-| R-12 | 西班牙语尚不存在 | FEATURE_GAP | 后端安全完成后再覆盖 login/dashboard/key/models/usage/pricing/recharge/subscription/admin |
+| R-12 | 西班牙语仅为 English fallback + 起步翻译 | PARTIAL_I18N | 已纳入 message compile；后端安全完成后补齐 login/dashboard/key/models/usage/pricing/recharge/subscription/admin 并做母语复核 |
 
 GitHub open issue 本身只能是 `OPEN_REPORT_UNCONFIRMED`，不能直接作为已确认漏洞或永久生产阻塞。

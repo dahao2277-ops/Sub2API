@@ -30,15 +30,17 @@ func (s *modelStub) ResolveModel(_ context.Context, _, _ string) (ModelMapping, 
 }
 
 type coreStub struct {
-	result  CoreResult
-	err     error
-	request CoreRequest
-	calls   int
+	result   CoreResult
+	err      error
+	request  CoreRequest
+	requests []CoreRequest
+	calls    int
 }
 
 func (s *coreStub) Execute(_ context.Context, request CoreRequest) (CoreResult, error) {
 	s.calls++
 	s.request = request
+	s.requests = append(s.requests, request)
 	return s.result, s.err
 }
 
@@ -55,13 +57,23 @@ func (s *projectionStub) Publish(_ context.Context, projection Projection) error
 }
 
 type driftStub struct {
-	calls int
-	cause error
+	allowed     bool
+	allowErr    error
+	allowCalls  int
+	recordErr   error
+	recordCalls int
+	cause       error
 }
 
-func (s *driftStub) ReportProjectionDrift(_ context.Context, _ Projection, cause error) {
-	s.calls++
+func (s *driftStub) AllowFinancialWrite(_ context.Context, _ string) (bool, error) {
+	s.allowCalls++
+	return s.allowed, s.allowErr
+}
+
+func (s *driftStub) RecordProjectionDrift(_ context.Context, _ Projection, cause error) error {
+	s.recordCalls++
 	s.cause = cause
+	return s.recordErr
 }
 
 func validFixture(t *testing.T) (*Adapter, *identityStub, *coreStub, *projectionStub, *driftStub) {
@@ -82,7 +94,7 @@ func validFixture(t *testing.T) (*Adapter, *identityStub, *coreStub, *projection
 		BalanceAfterMicro:      850,
 	}}
 	projections := &projectionStub{}
-	drift := &driftStub{}
+	drift := &driftStub{allowed: true}
 	adapter, err := New(identity, models, core, projections, drift, []byte(strings.Repeat("k", 32)))
 	require.NoError(t, err)
 	return adapter, identity, core, projections, drift
@@ -93,7 +105,6 @@ func validRequest() Request {
 		RawAPIKey:      "sub2api-test-secret",
 		IdempotencyKey: "idem-1",
 		RequestedModel: "public-model",
-		RequestHash:    "sha256:request",
 		Payload:        []byte(`{"messages":[]}`),
 	}
 }
@@ -111,7 +122,8 @@ func TestExecutePassesOnlyReferencesToCommercialCore(t *testing.T) {
 	require.Equal(t, "user-1", core.request.UserReference)
 	require.Equal(t, "key-1", core.request.KeyReference)
 	require.Equal(t, request.IdempotencyKey, core.request.IdempotencyKey)
-	require.Equal(t, request.RequestHash, core.request.RequestHash)
+	require.Equal(t, canonicalRequestHash(identity.principal, "core-model", request.Payload), core.request.RequestHash)
+	require.Len(t, core.request.RequestHash, 64)
 	require.Equal(t, "ledger-1", projections.projection.LedgerReference)
 	require.Equal(t, int64(850), projections.projection.BalanceAfterMicro)
 }
@@ -164,13 +176,70 @@ func TestExecuteReportsProjectionDriftWithoutRebilling(t *testing.T) {
 	result, err := adapter.Execute(context.Background(), validRequest())
 	require.NoError(t, err)
 	require.True(t, result.ProjectionDrift)
+	require.True(t, result.DriftStateRecorded)
 	require.Equal(t, 1, core.calls)
 	require.Equal(t, 1, projections.calls)
-	require.Equal(t, 1, drift.calls)
+	require.Equal(t, 1, drift.recordCalls)
 	require.ErrorIs(t, drift.cause, projectionErr)
 }
 
+func TestExecuteBlocksFinancialWriteWhileProjectionDriftIsActive(t *testing.T) {
+	adapter, _, core, projections, drift := validFixture(t)
+	drift.allowed = false
+
+	_, err := adapter.Execute(context.Background(), validRequest())
+	require.ErrorIs(t, err, ErrProjectionDriftActive)
+	require.Zero(t, core.calls)
+	require.Zero(t, projections.calls)
+}
+
+func TestExecuteFailsClosedWhenDriftStateIsUnavailable(t *testing.T) {
+	adapter, _, core, projections, drift := validFixture(t)
+	drift.allowErr = errors.New("drift database unavailable")
+
+	_, err := adapter.Execute(context.Background(), validRequest())
+	require.ErrorIs(t, err, ErrDriftStateUnavailable)
+	require.Zero(t, core.calls)
+	require.Zero(t, projections.calls)
+}
+
+func TestExecuteReturnsStablePublicErrors(t *testing.T) {
+	adapter, identity, core, _, _ := validFixture(t)
+	identity.err = errors.New("internal identity detail")
+
+	_, err := adapter.Execute(context.Background(), validRequest())
+	require.ErrorIs(t, err, ErrUnauthorized)
+	require.NotContains(t, err.Error(), "internal identity detail")
+
+	identity.err = nil
+	core.err = errors.New("internal core detail")
+	_, err = adapter.Execute(context.Background(), validRequest())
+	require.ErrorIs(t, err, ErrCoreExecutionFailed)
+	require.NotContains(t, err.Error(), "internal core detail")
+}
+
+func TestCanonicalRequestHashBindsIdentityModelAndPayload(t *testing.T) {
+	principal := Principal{UserID: "user-1", APICredentialID: "key-1"}
+	base := canonicalRequestHash(principal, "model-a", []byte("payload-a"))
+	require.Equal(t, base, canonicalRequestHash(principal, "model-a", []byte("payload-a")))
+	require.NotEqual(t, base, canonicalRequestHash(principal, "model-a", []byte("payload-b")))
+	require.NotEqual(t, base, canonicalRequestHash(principal, "model-b", []byte("payload-a")))
+	require.NotEqual(t, base, canonicalRequestHash(Principal{UserID: "user-2", APICredentialID: "key-1"}, "model-a", []byte("payload-a")))
+}
+
+func TestExecuteFailsClosedWhenDriftCannotBeRecorded(t *testing.T) {
+	adapter, _, core, projections, drift := validFixture(t)
+	projections.err = errors.New("projection unavailable")
+	drift.recordErr = errors.New("drift store unavailable")
+
+	result, err := adapter.Execute(context.Background(), validRequest())
+	require.ErrorIs(t, err, ErrDriftStateUnavailable)
+	require.True(t, result.ProjectionDrift)
+	require.False(t, result.DriftStateRecorded)
+	require.Equal(t, 1, core.calls)
+}
+
 func TestNewRequiresStrongFingerprintKey(t *testing.T) {
-	_, err := New(&identityStub{}, &modelStub{}, &coreStub{}, &projectionStub{}, &driftStub{}, []byte("short"))
+	_, err := New(&identityStub{}, &modelStub{}, &coreStub{}, &projectionStub{}, &driftStub{allowed: true}, []byte("short"))
 	require.ErrorIs(t, err, ErrInvalidRequest)
 }

@@ -126,6 +126,7 @@ type SecretProvider interface {
 	Get(ctx context.Context, ref SecretRef) (*SecretMaterial, error)
 	Put(ctx context.Context, material SecretMaterial) (*SecretRef, error)
 	Rotate(ctx context.Context, ref SecretRef) (*SecretRef, error)
+	Delete(ctx context.Context, ref SecretRef) error
 }
 
 type Adapter interface {

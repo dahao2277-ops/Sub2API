@@ -7,7 +7,9 @@ tasks:
     branch: ai/sub2api-foundation
     worktree: /Users/hhhh/AI-Worktrees/sub2api-ai16t/foundation
     editable_paths:
+      - backend/internal/ai16t/coreadapter
       - backend/internal/integration/ai16tadapter
+      - frontend/src/i18n
       - docs/ai16t
       - deploy/ai16t-sub2api
       - tools/ai16t
@@ -21,10 +23,18 @@ tasks:
       - go test ./internal/integration/ai16tadapter
       - upstream 与隔离静态检查通过
     result:
-      - full backend go test passed
-      - adapter race and vet passed
-      - frontend typecheck and locale tests passed
-      - compose static config and isolation checks passed
+      tested_at: 2026-08-23T22:31:07+08:00
+      commands:
+        - cd backend && go test ./...
+        - cd backend && go test -race ./internal/ai16t/... ./internal/integration/ai16tadapter
+        - cd backend && go vet ./internal/ai16t/... ./internal/integration/ai16tadapter
+        - cd frontend && ./node_modules/.bin/vue-tsc --noEmit
+        - cd frontend && ./node_modules/.bin/vitest run src/i18n/__tests__/localesMessageCompile.spec.ts src/i18n/__tests__/localesNoKeyCollision.spec.ts
+        - cd frontend && ./node_modules/.bin/vite build
+        - tools/ai16t/check_isolation.sh
+        - tools/ai16t/check_upstream_status.sh
+        - gitleaks git --log-opts=baseline..HEAD
+      note: Frontend dependencies must use the upstream pinned pnpm 9 frozen lock path; pnpm 11 direct execution is prohibited because it rewrites the lockfile.
   - task_id: m2-hybrid-02
     title: M2 真实 Hybrid E2E
     status: 被依赖阻塞

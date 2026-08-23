@@ -43,7 +43,7 @@ Sub2API HTTP auth
 
 ## Projection drift
 
-Projection 写失败不回滚已经完成的权威 Ledger 交易，也不得触发第二次计费。适配器返回 `ProjectionDrift=true`，监控记录 `PROJECTION_DRIFT`，后续仅从 Ledger 重新投影。
+Projection 写失败不回滚已经完成的权威 Ledger 交易，也不得触发第二次计费。适配器把 `PROJECTION_DRIFT` 写入 durable gate；gate 不可用或 drift 未由 Ledger reconciliation 清除时，后续财务调用 fail closed。修复只允许从 Ledger 重新投影。
 
 ## Secret 数据流
 

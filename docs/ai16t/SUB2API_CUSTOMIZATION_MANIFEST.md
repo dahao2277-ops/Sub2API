@@ -2,7 +2,7 @@
 
 | Upstream 路径 | 我们的修改 | 原因 | 冲突风险 | 是否隔离 | 升级处理 |
 |---|---|---|---|---|---|
-| `backend/internal/ai16t/*` | Core reserve/settle/refund/SecretProvider 合同骨架 | 商业核心 port 与 fail-closed 默认值 | LOW（全新 package） | 是 | 对照 pinned Core contract 后跑专项测试 |
+| `backend/internal/ai16t/coreadapter/*` | Core reserve/settle/refund/SecretProvider 合同骨架 | 商业核心 port 与 fail-closed 默认值 | LOW（全新 package） | 是 | 对照 pinned Core contract 后跑专项测试 |
 | `backend/internal/integration/ai16tadapter/*` | Sub2API 身份/模型到 Core Execute 的组合边界 | raw key 指纹化、Ledger 结果校验、projection drift | LOW（全新 package） | 是 | 编译/单测后按 upstream auth API 变化调整 |
 | `frontend/src/i18n/index.ts` | 注册 `es` locale | 西班牙语入口 | MEDIUM（现有 upstream 文件） | 否 | upstream sync 时人工合并并跑 locale tests |
 | `frontend/src/i18n/locales/es/*` | 西班牙语起步翻译 | 覆盖登录/常用导航的第一阶段 | LOW | 是 | 按功能矩阵补全，不把 fallback 误报为完整翻译 |

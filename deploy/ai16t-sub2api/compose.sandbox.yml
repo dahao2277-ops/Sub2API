@@ -51,7 +51,7 @@ services:
       retries: 12
 
   postgres:
-    image: postgres:17-alpine
+    image: postgres:18-alpine
     container_name: ai16t-sub2api-sandbox-postgres
     restart: "no"
     environment:

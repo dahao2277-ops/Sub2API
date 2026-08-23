@@ -15,6 +15,9 @@ var (
 	ErrAPIKeyRevoked          = errors.New("ai16t adapter: api key revoked")
 	ErrModelMappingMissing    = errors.New("ai16t adapter: model mapping missing")
 	ErrInvalidAuthorityResult = errors.New("ai16t adapter: invalid commercial core result")
+	ErrCoreExecutionFailed    = errors.New("ai16t adapter: commercial core execution failed")
+	ErrProjectionDriftActive  = errors.New("ai16t adapter: projection drift blocks financial writes")
+	ErrDriftStateUnavailable  = errors.New("ai16t adapter: projection drift state unavailable")
 )
 
 // Request contains only request-scoped data. RawAPIKey is used to create a
@@ -23,7 +26,6 @@ type Request struct {
 	RawAPIKey      string
 	IdempotencyKey string
 	RequestedModel string
-	RequestHash    string
 	Payload        []byte
 }
 
@@ -93,8 +95,9 @@ type Projection struct {
 }
 
 type Result struct {
-	Core            CoreResult
-	ProjectionDrift bool
+	Core               CoreResult
+	ProjectionDrift    bool
+	DriftStateRecorded bool
 }
 
 // IdentitySource authenticates only a keyed fingerprint. The raw API key must
@@ -118,6 +121,10 @@ type ProjectionSink interface {
 	Publish(ctx context.Context, projection Projection) error
 }
 
-type DriftReporter interface {
-	ReportProjectionDrift(ctx context.Context, projection Projection, cause error)
+// DriftGate is a durable reconciliation gate. Implementations must fail
+// closed when their backing store is unavailable and keep a user blocked until
+// an explicit Ledger-driven reconciliation clears the recorded drift.
+type DriftGate interface {
+	AllowFinancialWrite(ctx context.Context, userReference string) (bool, error)
+	RecordProjectionDrift(ctx context.Context, projection Projection, cause error) error
 }

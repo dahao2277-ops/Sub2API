@@ -3,6 +3,7 @@ package coreadapter
 import (
 	"context"
 	"errors"
+	"math"
 	"testing"
 	"time"
 )
@@ -22,6 +23,22 @@ func TestFailClosedAdapterRejectsFinancialOperations(t *testing.T) {
 	}
 	if _, err := adapter.Refund(ctx, RefundRequest{}); !errors.Is(err, ErrCoreUnavailable) {
 		t.Fatalf("Refund error = %v, want %v", err, ErrCoreUnavailable)
+	}
+}
+
+func TestProjectionDriftDetectionDoesNotOverflow(t *testing.T) {
+	projection := BalanceProjection{
+		Sub2APIProjection:   AmountMicros(math.MaxInt64),
+		LedgerAuthoritative: AmountMicros(math.MinInt64),
+		AllowedDriftMicros:  AmountMicros(math.MaxInt64),
+	}
+	if err := CheckProjectionDrift(context.Background(), projection); !errors.Is(err, ErrProjectionDrift) {
+		t.Fatalf("expected overflow-safe drift result, got %v", err)
+	}
+
+	projection.AllowedDriftMicros = -1
+	if err := CheckProjectionDrift(context.Background(), projection); !errors.Is(err, ErrProjectionDrift) {
+		t.Fatalf("expected negative tolerance to fail closed, got %v", err)
 	}
 }
 
@@ -56,5 +73,8 @@ func TestDisabledSecretProviderDoesNotExposeOrPersistSecrets(t *testing.T) {
 	}
 	if _, err := provider.Rotate(ctx, SecretRef{Provider: "mock", AccountID: 1}); !errors.Is(err, ErrSecretWriteDisabled) {
 		t.Fatalf("Rotate error = %v, want %v", err, ErrSecretWriteDisabled)
+	}
+	if err := provider.Delete(ctx, SecretRef{Provider: "mock", AccountID: 1}); !errors.Is(err, ErrSecretWriteDisabled) {
+		t.Fatalf("Delete error = %v, want %v", err, ErrSecretWriteDisabled)
 	}
 }

@@ -45,3 +45,7 @@ func (p *DisabledSecretProvider) Put(context.Context, SecretMaterial) (*SecretRe
 func (p *DisabledSecretProvider) Rotate(context.Context, SecretRef) (*SecretRef, error) {
 	return nil, ErrSecretWriteDisabled
 }
+
+func (p *DisabledSecretProvider) Delete(context.Context, SecretRef) error {
+	return ErrSecretWriteDisabled
+}

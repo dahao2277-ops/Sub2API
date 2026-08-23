@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/hmac"
 	"crypto/sha256"
+	"encoding/binary"
 	"encoding/hex"
 	"fmt"
 	"strings"
@@ -16,7 +17,7 @@ type Adapter struct {
 	models         ModelSource
 	core           CommercialCore
 	projections    ProjectionSink
-	driftReporter  DriftReporter
+	driftGate      DriftGate
 	fingerprintKey []byte
 }
 
@@ -25,10 +26,10 @@ func New(
 	models ModelSource,
 	core CommercialCore,
 	projections ProjectionSink,
-	driftReporter DriftReporter,
+	driftGate DriftGate,
 	fingerprintKey []byte,
 ) (*Adapter, error) {
-	if identity == nil || models == nil || core == nil || projections == nil || driftReporter == nil {
+	if identity == nil || models == nil || core == nil || projections == nil || driftGate == nil {
 		return nil, fmt.Errorf("%w: dependencies are required", ErrInvalidRequest)
 	}
 	if len(fingerprintKey) < minimumFingerprintKeyBytes {
@@ -40,7 +41,7 @@ func New(
 		models:         models,
 		core:           core,
 		projections:    projections,
-		driftReporter:  driftReporter,
+		driftGate:      driftGate,
 		fingerprintKey: append([]byte(nil), fingerprintKey...),
 	}, nil
 }
@@ -55,7 +56,7 @@ func (a *Adapter) Execute(ctx context.Context, request Request) (Result, error) 
 
 	principal, err := a.identity.AuthenticateAPIKey(ctx, a.fingerprint(request.RawAPIKey))
 	if err != nil {
-		return Result{}, fmt.Errorf("%w: %v", ErrUnauthorized, err)
+		return Result{}, ErrUnauthorized
 	}
 	if principal.KeyRevoked {
 		return Result{}, ErrAPIKeyRevoked
@@ -65,6 +66,13 @@ func (a *Adapter) Execute(ctx context.Context, request Request) (Result, error) 
 	}
 	if strings.TrimSpace(principal.UserID) == "" || strings.TrimSpace(principal.APICredentialID) == "" {
 		return Result{}, ErrUnauthorized
+	}
+	allowed, err := a.driftGate.AllowFinancialWrite(ctx, principal.UserID)
+	if err != nil {
+		return Result{}, ErrDriftStateUnavailable
+	}
+	if !allowed {
+		return Result{}, ErrProjectionDriftActive
 	}
 
 	mapping, err := a.models.ResolveModel(ctx, principal.Group, request.RequestedModel)
@@ -76,12 +84,12 @@ func (a *Adapter) Execute(ctx context.Context, request Request) (Result, error) 
 		UserReference:  principal.UserID,
 		KeyReference:   principal.APICredentialID,
 		IdempotencyKey: request.IdempotencyKey,
-		RequestHash:    request.RequestHash,
+		RequestHash:    canonicalRequestHash(principal, mapping.CoreModel, request.Payload),
 		Model:          mapping.CoreModel,
 		Payload:        append([]byte(nil), request.Payload...),
 	})
 	if err != nil {
-		return Result{}, err
+		return Result{}, ErrCoreExecutionFailed
 	}
 	if err := validateCoreResult(coreResult); err != nil {
 		return Result{}, err
@@ -105,7 +113,10 @@ func (a *Adapter) Execute(ctx context.Context, request Request) (Result, error) 
 	result := Result{Core: cloneCoreResult(coreResult)}
 	if err := a.projections.Publish(ctx, projection); err != nil {
 		result.ProjectionDrift = true
-		a.driftReporter.ReportProjectionDrift(ctx, projection, err)
+		if recordErr := a.driftGate.RecordProjectionDrift(ctx, projection, err); recordErr != nil {
+			return result, ErrDriftStateUnavailable
+		}
+		result.DriftStateRecorded = true
 	}
 	return result, nil
 }
@@ -113,14 +124,34 @@ func (a *Adapter) Execute(ctx context.Context, request Request) (Result, error) 
 func validateRequest(request Request) error {
 	if strings.TrimSpace(request.RawAPIKey) == "" ||
 		strings.TrimSpace(request.IdempotencyKey) == "" ||
-		strings.TrimSpace(request.RequestHash) == "" ||
 		strings.TrimSpace(request.RequestedModel) == "" {
 		return ErrInvalidRequest
 	}
-	if len(request.IdempotencyKey) > 256 || len(request.RequestHash) > 256 {
+	if len(request.IdempotencyKey) > 256 {
 		return ErrInvalidRequest
 	}
 	return nil
+}
+
+func canonicalRequestHash(principal Principal, coreModel string, payload []byte) string {
+	digest := sha256.New()
+	writeHashField(digest, []byte("ai16t-sub2api-request-v1"))
+	writeHashField(digest, []byte(principal.UserID))
+	writeHashField(digest, []byte(principal.APICredentialID))
+	writeHashField(digest, []byte(coreModel))
+	writeHashField(digest, payload)
+	return hex.EncodeToString(digest.Sum(nil))
+}
+
+type hashWriter interface {
+	Write([]byte) (int, error)
+}
+
+func writeHashField(writer hashWriter, value []byte) {
+	var length [8]byte
+	binary.BigEndian.PutUint64(length[:], uint64(len(value)))
+	_, _ = writer.Write(length[:])
+	_, _ = writer.Write(value)
 }
 
 func validateCoreResult(result CoreResult) error {

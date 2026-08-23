@@ -1,13 +1,20 @@
 package coreadapter
 
-import "context"
+import (
+	"context"
+	"math/big"
+)
 
 func CheckProjectionDrift(_ context.Context, projection BalanceProjection) error {
-	delta := projection.Sub2APIProjection - projection.LedgerAuthoritative
-	if delta < 0 {
-		delta = -delta
+	if projection.AllowedDriftMicros < 0 {
+		return ErrProjectionDrift
 	}
-	if delta > projection.AllowedDriftMicros {
+	delta := new(big.Int).Sub(
+		big.NewInt(int64(projection.Sub2APIProjection)),
+		big.NewInt(int64(projection.LedgerAuthoritative)),
+	)
+	delta.Abs(delta)
+	if delta.Cmp(big.NewInt(int64(projection.AllowedDriftMicros))) > 0 {
 		return ErrProjectionDrift
 	}
 	return nil

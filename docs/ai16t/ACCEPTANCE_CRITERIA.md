@@ -4,10 +4,11 @@
 
 - [x] Sub2APIAdapter 是独立新 package，不修改 upstream 核心实现。
 - [x] raw API Key 只在调用栈内生成 keyed HMAC fingerprint，不传给 dependency。
+- [x] request hash 由 Adapter 以 identity、credential、Core model 和原始 payload 计算，不信任调用方传入值。
 - [x] revoked key、disabled user、missing mapping 在调用 Core 前 fail closed。
 - [x] billable success 缺 Ledger reference 时 fail closed。
 - [x] failed request 出现非零 charge 时 fail closed。
-- [x] projection 失败标记 drift，不再次调用 Core 或重复计费。
+- [x] projection 失败写入 durable drift gate；gate 不可用或 drift 未清除时后续财务调用 fail closed。
 - [ ] 与 pinned Commercial Core 的真实接口完成编译期对接。
 
 ## 阶段 2：Hybrid dynamic E2E
