@@ -1,0 +1,108 @@
+name: ai16t-sub2api-sandbox
+
+services:
+  sub2api:
+    build:
+      context: ../..
+      dockerfile: Dockerfile
+    container_name: ai16t-sub2api-sandbox-app
+    restart: "no"
+    security_opt:
+      - no-new-privileges:true
+    ports:
+      - "127.0.0.1:${AI16T_SUB2API_PORT:-18080}:8080"
+    environment:
+      AUTO_SETUP: "true"
+      SERVER_HOST: 0.0.0.0
+      SERVER_PORT: "8080"
+      SERVER_MODE: release
+      DATABASE_HOST: postgres
+      DATABASE_PORT: "5432"
+      DATABASE_USER: ai16t_sub2api
+      DATABASE_PASSWORD: ${AI16T_SUB2API_POSTGRES_PASSWORD:?required}
+      DATABASE_DBNAME: ai16t_sub2api
+      DATABASE_SSLMODE: disable
+      REDIS_HOST: redis
+      REDIS_PORT: "6379"
+      REDIS_PASSWORD: ${AI16T_SUB2API_REDIS_PASSWORD:?required}
+      REDIS_DB: "0"
+      ADMIN_EMAIL: ${AI16T_SUB2API_ADMIN_EMAIL:?required}
+      ADMIN_PASSWORD: ${AI16T_SUB2API_ADMIN_PASSWORD:?required}
+      JWT_SECRET: ${AI16T_SUB2API_JWT_SECRET:?required}
+      TOTP_ENCRYPTION_KEY: ${AI16T_SUB2API_TOTP_KEY:?required}
+      TZ: Asia/Kuala_Lumpur
+      SECURITY_URL_ALLOWLIST_ENABLED: "true"
+      SECURITY_URL_ALLOWLIST_ALLOW_INSECURE_HTTP: "true"
+      SECURITY_URL_ALLOWLIST_ALLOW_PRIVATE_HOSTS: "true"
+      SECURITY_URL_ALLOWLIST_UPSTREAM_HOSTS: mock-provider
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - sub2api_data:/app/data
+    networks:
+      - platform_b_private
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:8080/health"]
+      interval: 10s
+      timeout: 3s
+      retries: 12
+
+  postgres:
+    image: postgres:17-alpine
+    container_name: ai16t-sub2api-sandbox-postgres
+    restart: "no"
+    environment:
+      POSTGRES_USER: ai16t_sub2api
+      POSTGRES_PASSWORD: ${AI16T_SUB2API_POSTGRES_PASSWORD:?required}
+      POSTGRES_DB: ai16t_sub2api
+      TZ: Asia/Kuala_Lumpur
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - postgres_backup:/backup
+    networks:
+      - platform_b_private
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ai16t_sub2api -d ai16t_sub2api"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  redis:
+    image: redis:8-alpine
+    container_name: ai16t-sub2api-sandbox-redis
+    restart: "no"
+    command:
+      - redis-server
+      - --appendonly
+      - "yes"
+      - --requirepass
+      - ${AI16T_SUB2API_REDIS_PASSWORD:?required}
+    volumes:
+      - redis_data:/data
+    networks:
+      - platform_b_private
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli -a $$AI16T_SUB2API_REDIS_PASSWORD ping | grep -q PONG"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    environment:
+      AI16T_SUB2API_REDIS_PASSWORD: ${AI16T_SUB2API_REDIS_PASSWORD:?required}
+
+networks:
+  platform_b_private:
+    name: ai16t-sub2api-sandbox-private
+    internal: true
+
+volumes:
+  sub2api_data:
+    name: ai16t-sub2api-sandbox-app-data
+  postgres_data:
+    name: ai16t-sub2api-sandbox-postgres-data
+  postgres_backup:
+    name: ai16t-sub2api-sandbox-postgres-backup
+  redis_data:
+    name: ai16t-sub2api-sandbox-redis-data

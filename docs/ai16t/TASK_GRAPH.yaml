@@ -1,0 +1,46 @@
+project: sub2api-ai16t
+integration_branch: bot2/sub2api-ai16t-integration
+tasks:
+  - task_id: foundation-01
+    title: Adapter 合同与单元测试
+    status: 执行中
+    branch: ai/sub2api-foundation
+    worktree: /Users/hhhh/AI-Worktrees/sub2api-ai16t/foundation
+    editable_paths:
+      - backend/internal/integration/ai16tadapter
+      - docs/ai16t
+      - deploy/ai16t-sub2api
+      - tools/ai16t
+    forbidden_paths:
+      - LICENSE
+      - README.md
+      - README_CN.md
+      - backend/migrations
+      - deploy/docker-compose.yml
+    acceptance:
+      - go test ./internal/integration/ai16tadapter
+      - upstream 与隔离静态检查通过
+  - task_id: m2-hybrid-02
+    title: M2 真实 Hybrid E2E
+    status: 被依赖阻塞
+    depends_on: [foundation-01]
+    blockers:
+      - M2 Commercial Core 权威源码/Worktree 当前不可达
+    acceptance:
+      - 26 dynamic E2E passed without skip
+      - Postgres Redis HTTP Core Mock Provider all real local processes
+  - task_id: staging-03
+    title: 隔离 Staging 与 Blue Green
+    status: 被依赖阻塞
+    depends_on: [m2-hybrid-02]
+    acceptance:
+      - migration clone and rollback passed
+      - backup restore drill passed
+      - health ready security billing gates passed
+  - task_id: owner-gate-04
+    title: 域名与服务器人工门
+    status: 被依赖阻塞
+    depends_on: [staging-03]
+    blockers:
+      - OWNER_DOMAIN_SELECTION_REQUIRED
+      - OWNER_SERVER_PURCHASE_REQUIRED
