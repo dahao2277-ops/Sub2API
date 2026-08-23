@@ -88,12 +88,14 @@ func (a *Adapter) Execute(ctx context.Context, request Request) (Result, error) 
 	}
 
 	coreResult, err := a.core.Execute(ctx, CoreRequest{
-		UserReference:  principal.UserID,
-		KeyReference:   principal.APICredentialID,
-		IdempotencyKey: request.IdempotencyKey,
-		RequestHash:    canonicalRequestHash(principal, mapping.CoreModel, request.Payload),
-		Model:          mapping.CoreModel,
-		Payload:        append([]byte(nil), request.Payload...),
+		UserReference:         principal.UserID,
+		KeyReference:          principal.APICredentialID,
+		IdempotencyKey:        request.IdempotencyKey,
+		RequestHash:           canonicalRequestHash(principal, mapping.CoreModel, request.Payload),
+		Model:                 mapping.CoreModel,
+		Payload:               append([]byte(nil), request.Payload...),
+		FailurePlan:           cloneFailurePlan(request.FailurePlan),
+		ClientResponseDelayMS: request.ClientResponseDelayMS,
 	})
 	if err != nil {
 		return Result{}, ErrCoreExecutionFailed
@@ -114,10 +116,15 @@ func (a *Adapter) Execute(ctx context.Context, request Request) (Result, error) 
 		CustomerChargeMicro:    coreResult.CustomerChargeMicro,
 		ProviderCostMicro:      coreResult.ProviderCostMicro,
 		BalanceAfterMicro:      coreResult.BalanceAfterMicro,
+		RefundMicro:            coreResult.RefundMicro,
+		NetRevenueMicro:        coreResult.NetRevenueMicro,
 		Replay:                 coreResult.Replay,
 	}
 
-	result := Result{Core: cloneCoreResult(coreResult), FinanciallyCommitted: true}
+	result := Result{
+		Core:                 cloneCoreResult(coreResult),
+		FinanciallyCommitted: coreResult.Status == OutcomeSettled,
+	}
 	if err := a.projections.Publish(ctx, projection); err != nil {
 		result.ProjectionDrift = true
 		a.driftedUsers.Store(principal.UserID, struct{}{})
@@ -135,16 +142,21 @@ func (a *Adapter) Execute(ctx context.Context, request Request) (Result, error) 
 	return result, nil
 }
 
-// ClearProjectionDrift is an explicit reconciliation action. Callers must
-// first rebuild the Sub2API projection from the authoritative Ledger.
-func (a *Adapter) ClearProjectionDrift(ctx context.Context, userReference string) error {
-	if strings.TrimSpace(userReference) == "" {
+// ReconcileProjection is the only operation that clears a drift gate. The
+// caller must supply a freshly fetched Commercial Core projection; the gate
+// implementation atomically replaces the Sub2API view and clears the block.
+func (a *Adapter) ReconcileProjection(ctx context.Context, projection Projection) error {
+	if strings.TrimSpace(projection.UserReference) == "" ||
+		strings.TrimSpace(projection.AuthoritativeRequestID) == "" ||
+		strings.TrimSpace(projection.LedgerReference) == "" ||
+		projection.BalanceAfterMicro < 0 || projection.RefundMicro < 0 ||
+		projection.NetRevenueMicro < 0 {
 		return ErrInvalidRequest
 	}
-	if err := a.driftGate.ClearProjectionDrift(ctx, userReference); err != nil {
+	if err := a.driftGate.ReconcileProjection(ctx, projection); err != nil {
 		return ErrDriftStateUnavailable
 	}
-	a.driftedUsers.Delete(userReference)
+	a.driftedUsers.Delete(projection.UserReference)
 	return nil
 }
 
@@ -186,7 +198,10 @@ func validateCoreResult(result CoreResult) error {
 		return ErrInvalidAuthorityResult
 	}
 	if result.InputTokens < 0 || result.OutputTokens < 0 ||
-		result.CustomerChargeMicro < 0 || result.ProviderCostMicro < 0 || result.BalanceAfterMicro < 0 {
+		result.CustomerChargeMicro < 0 || result.ProviderCostMicro < 0 ||
+		result.BalanceAfterMicro < 0 || result.RefundMicro < 0 ||
+		result.NetRevenueMicro < 0 || result.RefundMicro > result.CustomerChargeMicro ||
+		result.NetRevenueMicro != result.CustomerChargeMicro-result.RefundMicro {
 		return ErrInvalidAuthorityResult
 	}
 	switch result.Status {
@@ -212,5 +227,16 @@ func (a *Adapter) fingerprint(rawAPIKey string) string {
 
 func cloneCoreResult(result CoreResult) CoreResult {
 	result.Response = append([]byte(nil), result.Response...)
+	return result
+}
+
+func cloneFailurePlan(source map[string]string) map[string]string {
+	if len(source) == 0 {
+		return nil
+	}
+	result := make(map[string]string, len(source))
+	for key, value := range source {
+		result[key] = value
+	}
 	return result
 }

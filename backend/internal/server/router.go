@@ -69,6 +69,11 @@ func SetupRouter(
 		return nil
 	}))
 	r.Use(middleware2.ServerTiming(cfg.Server.EnableServerTiming))
+	// Hybrid routes are registered before the embedded SPA middleware so
+	// /ready and /v1/ai16t/* cannot be converted into an index.html fallback.
+	if err := routes.RegisterAI16THybridRoutes(r, apiKeyAuth, adminAuth, redisClient); err != nil {
+		log.Panicf("AI16T hybrid startup failed: %v", err)
+	}
 
 	// Serve embedded frontend with settings injection if available
 	if web.HasEmbeddedFrontend() {

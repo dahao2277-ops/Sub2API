@@ -1,0 +1,462 @@
+from __future__ import annotations
+
+import base64
+import hashlib
+import hmac
+import json
+import os
+import secrets
+import sqlite3
+import threading
+import time
+import urllib.error
+import urllib.request
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
+from typing import Any
+from urllib.parse import parse_qs, urlsplit
+
+from token_platform.config import Settings
+from token_platform.hybrid_control_plane import FileReferenceResolver
+from token_platform.models import ProviderFailure, ProviderResult, StreamChunk, Usage
+from token_platform.platform import TokenPlatform
+
+MAX_BODY = 2 * 1024 * 1024
+SIGNATURE_SKEW_SECONDS = 30
+
+
+def _read_mode_0600(path: str) -> bytes:
+    resolved = Path(path)
+    material = FileReferenceResolver({"value": resolved}).resolve("value").reveal().encode()
+    if len(material) < 32:
+        raise RuntimeError("secret material is too short")
+    return material
+
+
+class HTTPMockProvider:
+    def __init__(self, base_url: str, api_key: str, timeout_seconds: float = 0.75):
+        self.base_url = base_url.rstrip("/")
+        self.api_key = api_key
+        self.timeout_seconds = timeout_seconds
+
+    def call(
+        self,
+        *,
+        supplier_id: str,
+        model: str,
+        prompt: str,
+        failure: str | None = None,
+        stream: bool = False,
+    ) -> ProviderResult:
+        del stream
+        payload = json.dumps(
+            {
+                "supplier_id": supplier_id,
+                "model": model,
+                "prompt": prompt,
+                "failure": failure,
+            },
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode()
+        request = urllib.request.Request(
+            self.base_url + "/v1/invoke",
+            data=payload,
+            method="POST",
+            headers={
+                "Authorization": "Bearer " + self.api_key,
+                "Content-Type": "application/json",
+            },
+        )
+        try:
+            with urllib.request.urlopen(request, timeout=self.timeout_seconds) as response:
+                result = json.loads(response.read(MAX_BODY))
+        except urllib.error.HTTPError as error:
+            try:
+                detail = json.loads(error.read(MAX_BODY))
+            except (json.JSONDecodeError, OSError, ValueError):
+                detail = {}
+            partial = detail.get("partial_usage")
+            usage = (
+                Usage(
+                    int(partial.get("input_tokens", 0)),
+                    int(partial.get("output_tokens", 0)),
+                    int(partial.get("cached_tokens", 0)),
+                )
+                if isinstance(partial, dict)
+                else None
+            )
+            raise ProviderFailure(
+                str(detail.get("code", "provider_http_error")),
+                retryable=bool(detail.get("retryable", True)),
+                partial_usage=usage,
+                usage_source=str(detail.get("usage_source", "missing")),
+            ) from error
+        except (TimeoutError, urllib.error.URLError) as error:
+            raise ProviderFailure("timeout", usage_source="confirmed_none") from error
+        usage_data = result["usage"]
+        return ProviderResult(
+            supplier_id=supplier_id,
+            usage=Usage(
+                int(usage_data["input_tokens"]),
+                int(usage_data["output_tokens"]),
+                int(usage_data.get("cached_tokens", 0)),
+            ),
+            content=str(result["content"]),
+            latency_ms=int(result["latency_ms"]),
+        )
+
+    def stream(
+        self,
+        *,
+        supplier_id: str,
+        model: str,
+        prompt: str,
+        failure: str | None = None,
+    ) -> Any:
+        result = self.call(
+            supplier_id=supplier_id,
+            model=model,
+            prompt=prompt,
+            failure=failure,
+        )
+        yield StreamChunk(result.content, result.usage, "stop")
+
+
+class HybridAuthority:
+    def __init__(self) -> None:
+        self.settings = Settings.from_env()
+        self.platform = TokenPlatform(self.settings)
+        self.platform.initialize()
+        resolver = FileReferenceResolver(
+            {"mock-provider-api-key": Path(os.environ["AI16T_MOCK_PROVIDER_KEY_FILE"])}
+        )
+        provider_key = resolver.resolve("mock-provider-api-key").reveal()
+        external_provider = HTTPMockProvider(os.environ["AI16T_MOCK_PROVIDER_URL"], provider_key)
+        self.platform.provider = external_provider
+        self.platform.gateway.provider = external_provider
+        self.signing_key = _read_mode_0600(os.environ["AI16T_CORE_SIGNING_KEY_FILE"])
+        self.identity_lock = threading.Lock()
+        self._initialize_bridge_schema()
+
+    def _initialize_bridge_schema(self) -> None:
+        with self.platform.database.transaction() as connection:
+            connection.execute(
+                """CREATE TABLE IF NOT EXISTS sub2api_identity_map(
+                external_user_reference TEXT NOT NULL,
+                external_key_reference TEXT NOT NULL,
+                core_user_id INTEGER NOT NULL REFERENCES users(id),
+                core_api_key_id INTEGER NOT NULL REFERENCES api_keys(id),
+                created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+                PRIMARY KEY(external_user_reference,external_key_reference))"""
+            )
+            connection.execute(
+                """CREATE TABLE IF NOT EXISTS bridge_nonces(
+                nonce TEXT PRIMARY KEY, expires_at INTEGER NOT NULL)"""
+            )
+            connection.execute(
+                """CREATE TABLE IF NOT EXISTS bridge_requests(
+                request_id TEXT PRIMARY KEY, created_at TEXT NOT NULL DEFAULT
+                (strftime('%Y-%m-%dT%H:%M:%fZ','now')))"""
+            )
+
+    def authorize(self, method: str, path: str, body: bytes, headers: Any) -> bool:
+        timestamp = headers.get("X-AI16T-Timestamp", "")
+        nonce = headers.get("X-AI16T-Nonce", "")
+        signature = headers.get("X-AI16T-Signature", "")
+        try:
+            timestamp_value = int(timestamp)
+        except ValueError:
+            return False
+        now = int(time.time())
+        if abs(now - timestamp_value) > SIGNATURE_SKEW_SECONDS or len(nonce) != 48:
+            return False
+        digest = hashlib.sha256(body).hexdigest()
+        canonical = "\n".join((method, path, timestamp, nonce, digest)).encode()
+        expected = hmac.new(self.signing_key, canonical, hashlib.sha256).hexdigest()
+        if not hmac.compare_digest(expected, signature):
+            return False
+        try:
+            with self.platform.database.transaction() as connection:
+                connection.execute("DELETE FROM bridge_nonces WHERE expires_at < ?", (now,))
+                connection.execute(
+                    "INSERT INTO bridge_nonces(nonce,expires_at) VALUES (?,?)",
+                    (nonce, now + SIGNATURE_SKEW_SECONDS * 2),
+                )
+        except sqlite3.IntegrityError:
+            return False
+        return True
+
+    def _identity(self, external_user: str, external_key: str) -> tuple[int, int]:
+        if not external_user or not external_key:
+            raise ValueError("external identity is required")
+        with self.identity_lock:
+            with self.platform.database.read() as connection:
+                row = connection.execute(
+                    """SELECT core_user_id,core_api_key_id FROM sub2api_identity_map
+                    WHERE external_user_reference=? AND external_key_reference=?""",
+                    (external_user, external_key),
+                ).fetchone()
+                if row:
+                    return int(row["core_user_id"]), int(row["core_api_key_id"])
+                user_row = connection.execute(
+                    """SELECT core_user_id FROM sub2api_identity_map
+                    WHERE external_user_reference=? LIMIT 1""",
+                    (external_user,),
+                ).fetchone()
+            if user_row:
+                user_id = int(user_row["core_user_id"])
+            else:
+                password = secrets.token_urlsafe(32)
+                user_id = self.platform.register_user(
+                    f"sub2api-{external_user}@isolated.invalid", password
+                )
+                self.platform.add_test_credit(
+                    user_id,
+                    int(os.getenv("AI16T_INITIAL_CREDIT_MICRO", "200000")),
+                    f"sub2api-bootstrap-{external_user}",
+                )
+            api_key_id, _discarded_raw = self.platform.create_api_key(user_id)
+            with self.platform.database.transaction() as connection:
+                connection.execute(
+                    """INSERT INTO sub2api_identity_map(
+                    external_user_reference,external_key_reference,core_user_id,core_api_key_id)
+                    VALUES (?,?,?,?)""",
+                    (external_user, external_key, user_id, api_key_id),
+                )
+            return user_id, api_key_id
+
+    def _request_replay(self, request_id: str) -> bool:
+        with self.platform.database.transaction() as connection:
+            cursor = connection.execute(
+                "INSERT OR IGNORE INTO bridge_requests(request_id) VALUES (?)", (request_id,)
+            )
+            return cursor.rowcount == 0
+
+    @staticmethod
+    def _prompt(payload_b64: str) -> str:
+        payload = json.loads(base64.b64decode(payload_b64, validate=True))
+        messages = payload.get("messages", [])
+        if not isinstance(messages, list) or not messages:
+            raise ValueError("messages are required")
+        return "\n".join(
+            str(item.get("content", ""))
+            for item in messages
+            if isinstance(item, dict) and item.get("content")
+        )
+
+    def execute(self, payload: dict[str, Any]) -> dict[str, Any]:
+        user_id, api_key_id = self._identity(
+            str(payload.get("UserReference", "")), str(payload.get("KeyReference", ""))
+        )
+        idempotency_key = str(payload.get("IdempotencyKey", ""))
+        request_hash = str(payload.get("RequestHash", ""))
+        model = str(payload.get("Model", ""))
+        if not idempotency_key or not request_hash or model != "gpt-4o-mini":
+            raise ValueError("invalid authority request")
+        authoritative_request_id = "sub2_" + hashlib.sha256(
+            f"{user_id}\0{api_key_id}\0{idempotency_key}".encode()
+        ).hexdigest()[:40]
+        replay = self._request_replay(authoritative_request_id)
+        settlement = self.platform.process_request(
+            user_id=user_id,
+            api_key_id=api_key_id,
+            provider="openai",
+            model=model,
+            prompt=self._prompt(str(payload.get("Payload", ""))),
+            request_id=authoritative_request_id,
+            idempotency_key=idempotency_key,
+            failure_plan=payload.get("FailurePlan") or None,
+        )
+        return self._result(settlement, replay)
+
+    def _result(self, settlement: Any, replay: bool) -> dict[str, Any]:
+        with self.platform.database.read() as connection:
+            request = connection.execute(
+                "SELECT * FROM requests WHERE request_id=?", (settlement.request_id,)
+            ).fetchone()
+            ledger = connection.execute(
+                """SELECT transaction_id FROM ledger_entries WHERE request_id=?
+                ORDER BY id DESC LIMIT 1""",
+                (settlement.request_id,),
+            ).fetchone()
+            refund_row = connection.execute(
+                "SELECT COALESCE(SUM(amount_micro),0) value FROM refunds WHERE request_id=?",
+                (settlement.request_id,),
+            ).fetchone()
+        refund = int(refund_row["value"]) if refund_row else 0
+        revenue = int(settlement.revenue_micro)
+        response = json.dumps(
+            {
+                "id": settlement.request_id,
+                "object": "chat.completion",
+                "model": "ai16t-mock",
+                "choices": [
+                    {
+                        "index": 0,
+                        "message": {"role": "assistant", "content": settlement.content},
+                        "finish_reason": "stop",
+                    }
+                ],
+                "usage": {
+                    "prompt_tokens": settlement.usage.input_tokens,
+                    "completion_tokens": settlement.usage.output_tokens,
+                    "total_tokens": settlement.usage.total_tokens,
+                },
+            },
+            separators=(",", ":"),
+        ).encode()
+        settled = settlement.status in ("COMPLETED", "PARTIAL_SETTLED")
+        return {
+            "AuthoritativeRequestID": settlement.request_id,
+            "LedgerReference": str(ledger["transaction_id"]) if ledger else "",
+            "Status": "SETTLED" if settled else "FAILED_RELEASED",
+            "Response": base64.b64encode(response).decode() if settled else "",
+            "InputTokens": settlement.usage.input_tokens,
+            "OutputTokens": settlement.usage.output_tokens,
+            "CustomerChargeMicro": revenue,
+            "ProviderCostMicro": settlement.cost_micro,
+            "BalanceAfterMicro": settlement.balance_micro,
+            "RefundMicro": refund,
+            "NetRevenueMicro": revenue - refund,
+            "Replay": replay,
+        }
+
+    def projection(self, external_user: str) -> dict[str, Any]:
+        with self.platform.database.read() as connection:
+            mapping = connection.execute(
+                """SELECT core_user_id FROM sub2api_identity_map
+                WHERE external_user_reference=? LIMIT 1""",
+                (external_user,),
+            ).fetchone()
+            if not mapping:
+                raise ValueError("identity not found")
+            user_id = int(mapping["core_user_id"])
+            request = connection.execute(
+                "SELECT * FROM requests WHERE user_id=? ORDER BY id DESC LIMIT 1", (user_id,)
+            ).fetchone()
+            if not request:
+                raise ValueError("request not found")
+            balance = connection.execute(
+                "SELECT available_micro FROM balances WHERE user_id=?", (user_id,)
+            ).fetchone()
+            ledger = connection.execute(
+                """SELECT transaction_id FROM ledger_entries WHERE request_id=?
+                ORDER BY id DESC LIMIT 1""",
+                (request["request_id"],),
+            ).fetchone()
+            refund_row = connection.execute(
+                "SELECT COALESCE(SUM(amount_micro),0) value FROM refunds WHERE request_id=?",
+                (request["request_id"],),
+            ).fetchone()
+        refunded_micro = int(refund_row["value"]) if refund_row else 0
+        return {
+            "AuthoritativeRequestID": str(request["request_id"]),
+            "LedgerReference": str(ledger["transaction_id"]),
+            "UserReference": external_user,
+            "KeyReference": "ledger-projection",
+            "Model": str(request["model"]),
+            "Status": (
+                "SETTLED"
+                if request["status"] in ("COMPLETED", "PARTIAL_SETTLED", "REFUNDED")
+                else "FAILED_RELEASED"
+            ),
+            "InputTokens": int(request["input_tokens"]),
+            "OutputTokens": int(request["output_tokens"]),
+            "CustomerChargeMicro": int(request["customer_total_charge"]),
+            "ProviderCostMicro": int(request["supplier_total_cost"]),
+            "BalanceAfterMicro": int(balance["available_micro"]),
+            "RefundMicro": refunded_micro,
+            "NetRevenueMicro": int(request["customer_total_charge"])
+            - refunded_micro,
+            "Replay": True,
+        }
+
+    def refund(self, payload: dict[str, Any]) -> dict[str, Any]:
+        request_id = str(payload.get("authoritative_request_id", ""))
+        refund_id = str(payload.get("refund_id", ""))
+        amount = payload.get("amount_micro")
+        self.platform.ledger.refund(
+            request_id, refund_id, None if amount is None else int(amount)
+        )
+        with self.platform.database.read() as connection:
+            row = connection.execute(
+                """SELECT sim.external_user_reference FROM requests r
+                JOIN sub2api_identity_map sim ON sim.core_user_id=r.user_id
+                WHERE r.request_id=? LIMIT 1""",
+                (request_id,),
+            ).fetchone()
+        if not row:
+            raise ValueError("refund projection identity not found")
+        return self.projection(str(row["external_user_reference"]))
+
+
+AUTHORITY = HybridAuthority()
+
+
+class Handler(BaseHTTPRequestHandler):
+    server_version = "AI16TCoreBridge/1"
+
+    def log_message(self, format_string: str, *args: Any) -> None:
+        del format_string, args
+
+    def _body(self) -> bytes:
+        try:
+            length = int(self.headers.get("Content-Length", "0"))
+        except ValueError as error:
+            raise ValueError("invalid content length") from error
+        if length < 0 or length > MAX_BODY:
+            raise ValueError("request body exceeds limit")
+        return self.rfile.read(length)
+
+    def _write(self, status: int, payload: dict[str, Any]) -> None:
+        encoded = json.dumps(payload, separators=(",", ":")).encode()
+        self.send_response(status)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(encoded)))
+        self.end_headers()
+        self.wfile.write(encoded)
+
+    def _dispatch(self) -> None:
+        try:
+            body = self._body()
+            if self.command == "GET" and self.path == "/health":
+                self._write(200, {"status": "ok"})
+                return
+            if not AUTHORITY.authorize(self.command, self.path, body, self.headers):
+                self._write(401, {"error": "invalid service signature"})
+                return
+            parsed = urlsplit(self.path)
+            if self.command == "GET" and parsed.path == "/internal/v1/health":
+                self._write(200, {"status": "ok", "authority": "LEDGER_WINS"})
+                return
+            if self.command == "GET" and parsed.path == "/internal/v1/projection":
+                user = parse_qs(parsed.query).get("user_reference", [""])[0]
+                self._write(200, AUTHORITY.projection(user))
+                return
+            payload = json.loads(body or b"{}")
+            if self.command == "POST" and parsed.path == "/internal/v1/execute":
+                self._write(200, AUTHORITY.execute(payload))
+                return
+            if self.command == "POST" and parsed.path == "/internal/v1/refund":
+                self._write(200, AUTHORITY.refund(payload))
+                return
+            self._write(404, {"error": "not found"})
+        except (ValueError, KeyError, TypeError, json.JSONDecodeError) as error:
+            self._write(400, {"error": type(error).__name__})
+        except PermissionError as error:
+            self._write(403, {"error": type(error).__name__})
+        except BaseException as error:
+            self._write(503, {"error": type(error).__name__})
+
+    do_GET = _dispatch
+    do_POST = _dispatch
+
+
+def main() -> None:
+    server = ThreadingHTTPServer(("0.0.0.0", 8787), Handler)
+    server.serve_forever()
+
+
+if __name__ == "__main__":
+    main()

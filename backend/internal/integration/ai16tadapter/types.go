@@ -27,6 +27,10 @@ type Request struct {
 	IdempotencyKey string
 	RequestedModel string
 	Payload        []byte
+	// FailurePlan and ClientResponseDelayMS are accepted only by the isolated
+	// hybrid runtime. Production handlers must reject both before Adapter.Execute.
+	FailurePlan           map[string]string
+	ClientResponseDelayMS int
 }
 
 // Principal is a non-financial identity projection from Sub2API.
@@ -48,12 +52,14 @@ type ModelMapping struct {
 // CoreRequest is the complete input allowed to cross into the Commercial
 // Core. It deliberately has no Sub2API balance, quota or price fields.
 type CoreRequest struct {
-	UserReference  string
-	KeyReference   string
-	IdempotencyKey string
-	RequestHash    string
-	Model          string
-	Payload        []byte
+	UserReference         string
+	KeyReference          string
+	IdempotencyKey        string
+	RequestHash           string
+	Model                 string
+	Payload               []byte
+	FailurePlan           map[string]string
+	ClientResponseDelayMS int
 }
 
 type OutcomeStatus string
@@ -74,6 +80,8 @@ type CoreResult struct {
 	CustomerChargeMicro    int64
 	ProviderCostMicro      int64
 	BalanceAfterMicro      int64
+	RefundMicro            int64
+	NetRevenueMicro        int64
 	Replay                 bool
 }
 
@@ -91,6 +99,8 @@ type Projection struct {
 	CustomerChargeMicro    int64
 	ProviderCostMicro      int64
 	BalanceAfterMicro      int64
+	RefundMicro            int64
+	NetRevenueMicro        int64
 	Replay                 bool
 }
 
@@ -128,5 +138,5 @@ type ProjectionSink interface {
 type DriftGate interface {
 	AllowFinancialWrite(ctx context.Context, userReference string) (bool, error)
 	RecordProjectionDrift(ctx context.Context, projection Projection, cause error) error
-	ClearProjectionDrift(ctx context.Context, userReference string) error
+	ReconcileProjection(ctx context.Context, projection Projection) error
 }

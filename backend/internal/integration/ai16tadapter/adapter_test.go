@@ -57,15 +57,15 @@ func (s *projectionStub) Publish(_ context.Context, projection Projection) error
 }
 
 type driftStub struct {
-	allowed      bool
-	allowErr     error
-	allowCalls   int
-	recordErr    error
-	recordCalls  int
-	recordCtxErr error
-	clearErr     error
-	clearCalls   int
-	cause        error
+	allowed        bool
+	allowErr       error
+	allowCalls     int
+	recordErr      error
+	recordCalls    int
+	recordCtxErr   error
+	reconcileErr   error
+	reconcileCalls int
+	cause          error
 }
 
 func (s *driftStub) AllowFinancialWrite(_ context.Context, _ string) (bool, error) {
@@ -84,9 +84,9 @@ func (s *driftStub) recordProjectionDrift(ctx context.Context, cause error) erro
 	return s.recordErr
 }
 
-func (s *driftStub) ClearProjectionDrift(_ context.Context, _ string) error {
-	s.clearCalls++
-	return s.clearErr
+func (s *driftStub) ReconcileProjection(_ context.Context, _ Projection) error {
+	s.reconcileCalls++
+	return s.reconcileErr
 }
 
 func validFixture(t *testing.T) (*Adapter, *identityStub, *coreStub, *projectionStub, *driftStub) {
@@ -105,6 +105,7 @@ func validFixture(t *testing.T) (*Adapter, *identityStub, *coreStub, *projection
 		CustomerChargeMicro:    150,
 		ProviderCostMicro:      100,
 		BalanceAfterMicro:      850,
+		NetRevenueMicro:        150,
 	}}
 	projections := &projectionStub{}
 	drift := &driftStub{allowed: true}
@@ -281,7 +282,7 @@ func TestProjectionDriftRecordSurvivesCanceledRequestContext(t *testing.T) {
 	require.NoError(t, drift.recordCtxErr)
 }
 
-func TestClearProjectionDriftRequiresExplicitReconciliation(t *testing.T) {
+func TestProjectionDriftRequiresLedgerDrivenReconciliation(t *testing.T) {
 	adapter, _, core, projections, drift := validFixture(t)
 	projections.err = errors.New("projection unavailable")
 
@@ -291,8 +292,14 @@ func TestClearProjectionDriftRequiresExplicitReconciliation(t *testing.T) {
 	require.ErrorIs(t, err, ErrProjectionDriftActive)
 	require.Equal(t, 1, core.calls)
 
-	require.NoError(t, adapter.ClearProjectionDrift(context.Background(), "user-1"))
-	require.Equal(t, 1, drift.clearCalls)
+	require.NoError(t, adapter.ReconcileProjection(context.Background(), Projection{
+		AuthoritativeRequestID: "request-1",
+		LedgerReference:        "ledger-1",
+		UserReference:          "user-1",
+		BalanceAfterMicro:      850,
+		NetRevenueMicro:        150,
+	}))
+	require.Equal(t, 1, drift.reconcileCalls)
 	_, err = adapter.Execute(context.Background(), validRequest())
 	require.NoError(t, err)
 	require.Equal(t, 2, core.calls)

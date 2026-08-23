@@ -1,16 +1,19 @@
-name: ai16t-sub2api-sandbox
+name: sub2api-ai16t-mac1
 
 services:
   sub2api:
     build:
       context: ../..
       dockerfile: Dockerfile
-    container_name: ai16t-sub2api-sandbox-app
+    image: sub2api-ai16t-mac1:${SUB2API_IMAGE_TAG:-hybrid-v1}
     restart: "no"
+    init: true
     security_opt:
       - no-new-privileges:true
     ports:
       - "127.0.0.1:${AI16T_SUB2API_PORT:-18080}:8080"
+    env_file:
+      - .runtime/hybrid.env
     environment:
       AUTO_SETUP: "true"
       SERVER_HOST: 0.0.0.0
@@ -19,48 +22,132 @@ services:
       DATABASE_HOST: postgres
       DATABASE_PORT: "5432"
       DATABASE_USER: ai16t_sub2api
-      DATABASE_PASSWORD: ${AI16T_SUB2API_POSTGRES_PASSWORD:?required}
       DATABASE_DBNAME: ai16t_sub2api
       DATABASE_SSLMODE: disable
       REDIS_HOST: redis
       REDIS_PORT: "6379"
-      REDIS_PASSWORD: ${AI16T_SUB2API_REDIS_PASSWORD:?required}
       REDIS_DB: "0"
-      ADMIN_EMAIL: ${AI16T_SUB2API_ADMIN_EMAIL:?required}
-      ADMIN_PASSWORD: ${AI16T_SUB2API_ADMIN_PASSWORD:?required}
-      JWT_SECRET: ${AI16T_SUB2API_JWT_SECRET:?required}
-      TOTP_ENCRYPTION_KEY: ${AI16T_SUB2API_TOTP_KEY:?required}
       TZ: Asia/Kuala_Lumpur
-      SECURITY_URL_ALLOWLIST_ENABLED: "true"
-      SECURITY_URL_ALLOWLIST_ALLOW_INSECURE_HTTP: "true"
-      SECURITY_URL_ALLOWLIST_ALLOW_PRIVATE_HOSTS: "true"
-      SECURITY_URL_ALLOWLIST_UPSTREAM_HOSTS: mock-provider
+      AI16T_HYBRID_ENABLED: "true"
+      AI16T_ISOLATED_TEST_MODE: "true"
+      AI16T_CORE_URL: http://commercial-core:8787
+      AI16T_CORE_SIGNING_KEY_FILE: /run/ai16t/core_signing_key
+      AI16T_FINGERPRINT_KEY_FILE: /run/ai16t/fingerprint_key
+      AI16T_PUBLIC_MODEL: ai16t-mock
+      AI16T_CORE_MODEL: gpt-4o-mini
     depends_on:
       postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
+      commercial-core:
+        condition: service_healthy
     volumes:
       - sub2api_data:/app/data
+      - ./.runtime/core_signing_key:/run/ai16t/core_signing_key:ro
+      - ./.runtime/fingerprint_key:/run/ai16t/fingerprint_key:ro
+    networks:
+      - platform_b_private
+      - platform_b_loopback_ingress
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:8080/ready"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+
+  commercial-core:
+    platform: linux/amd64
+    build:
+      context: ${AI16T_CORE_SOURCE_DIR:-/Users/hhhh/Projects/ai16t-commercial-core}
+      dockerfile: Dockerfile
+      args:
+        TP_OCI_REVISION: 56108397f31a97926f33d28420e9b44a52547bd2
+        TP_OCI_TREE: 6057218ef7291f5d9fb493e8fb7b02fa059ef049
+        TP_EVIDENCE_RUN_ID: sub2api-ai16t-mac1-hybrid-v1
+    image: ai16t-commercial-core-sub2api-mac1:56108397
+    restart: "no"
+    init: true
+    entrypoint: ["python", "/bridge/core_bridge.py"]
+    security_opt:
+      - no-new-privileges:true
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,mode=1777
+    env_file:
+      - .runtime/hybrid.env
+    environment:
+      PYTHONPATH: /app:/opt/cpython/lib/python3.12/site-packages
+      TP_BIND_HOST: 0.0.0.0
+      TP_CONTAINER_ISOLATION_ACK: "1"
+      TP_DATABASE_PATH: /data/token-platform.sqlite3
+      TP_RUNTIME_MODE: isolated-test
+      TP_TEST_MODE: mock-only-enabled
+      TP_MIN_PROFIT_MARGIN_PPM: "100000"
+      AI16T_CORE_SIGNING_KEY_FILE: /run/ai16t/core_signing_key
+      AI16T_MOCK_PROVIDER_KEY_FILE: /run/ai16t/mock_provider_key
+      AI16T_MOCK_PROVIDER_URL: http://mock-provider:9090
+      AI16T_INITIAL_CREDIT_MICRO: "200000"
+    depends_on:
+      mock-provider:
+        condition: service_healthy
+    volumes:
+      - core_data:/data
+      - ./core_bridge.py:/bridge/core_bridge.py:ro
+      - ./core_evidence.py:/evidence/core_evidence.py:ro
+      - ./.runtime/core_signing_key:/run/ai16t/core_signing_key:ro
+      - ./.runtime/mock_provider_key:/run/ai16t/mock_provider_key:ro
     networks:
       - platform_b_private
     healthcheck:
-      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:8080/health"]
-      interval: 10s
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8787/health', timeout=2).read()"
+      interval: 5s
       timeout: 3s
-      retries: 12
+      retries: 30
+
+  mock-provider:
+    platform: linux/amd64
+    image: ai16t-commercial-core-sub2api-mac1:56108397
+    restart: "no"
+    init: true
+    entrypoint: ["python", "/mock/mock_provider.py"]
+    security_opt:
+      - no-new-privileges:true
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,mode=1777
+    environment:
+      AI16T_MOCK_PROVIDER_KEY_FILE: /run/ai16t/mock_provider_key
+    volumes:
+      - ./mock_provider.py:/mock/mock_provider.py:ro
+      - ./.runtime/mock_provider_key:/run/ai16t/mock_provider_key:ro
+    networks:
+      - platform_b_private
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request; urllib.request.urlopen('http://127.0.0.1:9090/health', timeout=2).read()"
+      interval: 5s
+      timeout: 3s
+      retries: 30
 
   postgres:
     image: postgres:18-alpine
-    container_name: ai16t-sub2api-sandbox-postgres
     restart: "no"
+    env_file:
+      - .runtime/hybrid.env
     environment:
       POSTGRES_USER: ai16t_sub2api
-      POSTGRES_PASSWORD: ${AI16T_SUB2API_POSTGRES_PASSWORD:?required}
+      POSTGRES_PASSWORD: ${DATABASE_PASSWORD:?required}
       POSTGRES_DB: ai16t_sub2api
       TZ: Asia/Kuala_Lumpur
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - postgres_data:/var/lib/postgresql
       - postgres_backup:/backup
     networks:
       - platform_b_private
@@ -68,36 +155,24 @@ services:
       test: ["CMD-SHELL", "pg_isready -U ai16t_sub2api -d ai16t_sub2api"]
       interval: 5s
       timeout: 3s
-      retries: 20
+      retries: 30
 
   redis:
     image: redis:8-alpine
-    container_name: ai16t-sub2api-sandbox-redis
     restart: "no"
+    env_file:
+      - .runtime/hybrid.env
     command:
       - sh
       - -eu
       - -c
       - |
         umask 077
-        redis_password="$$(cat /run/secrets/redis_password)"
-        if [ "$${#redis_password}" -lt 16 ]; then
-          echo "Redis sandbox password must contain at least 16 characters" >&2
-          exit 1
-        fi
-        case "$$redis_password" in
-          *[!A-Za-z0-9_@%+=:,.-]*)
-            echo "Redis sandbox password contains unsupported characters" >&2
-            exit 1
-            ;;
+        case "$${REDIS_PASSWORD}" in
+          *[!A-Za-z0-9_@%+=:,.-]*) exit 1 ;;
         esac
-        printf 'appendonly yes\nrequirepass %s\n' "$$redis_password" > /tmp/redis.conf
-        unset redis_password
-        chown redis:redis /tmp/redis.conf
-        chmod 0600 /tmp/redis.conf
-        exec gosu redis redis-server /tmp/redis.conf
-    secrets:
-      - redis_password
+        printf 'appendonly yes\nrequirepass %s\n' "$${REDIS_PASSWORD}" > /tmp/redis.conf
+        exec redis-server /tmp/redis.conf
     tmpfs:
       - /tmp:rw,noexec,nosuid,nodev,mode=1777
     volumes:
@@ -105,26 +180,26 @@ services:
     networks:
       - platform_b_private
     healthcheck:
-      test: ["CMD-SHELL", "REDISCLI_AUTH=\"$$(cat /run/secrets/redis_password)\" redis-cli ping | grep -q PONG"]
+      test: ["CMD-SHELL", "REDISCLI_AUTH=\"$${REDIS_PASSWORD}\" redis-cli ping | grep -q PONG"]
       interval: 5s
       timeout: 3s
-      retries: 20
+      retries: 30
 
 networks:
   platform_b_private:
-    name: ai16t-sub2api-sandbox-private
+    name: sub2api-ai16t-mac1-private
     internal: true
+  platform_b_loopback_ingress:
+    name: sub2api-ai16t-mac1-loopback-ingress
 
 volumes:
   sub2api_data:
-    name: ai16t-sub2api-sandbox-app-data
+    name: sub2api-ai16t-mac1-app-data
   postgres_data:
-    name: ai16t-sub2api-sandbox-postgres-data
+    name: sub2api-ai16t-mac1-postgres-data
   postgres_backup:
-    name: ai16t-sub2api-sandbox-postgres-backup
+    name: sub2api-ai16t-mac1-postgres-backup
   redis_data:
-    name: ai16t-sub2api-sandbox-redis-data
-
-secrets:
-  redis_password:
-    environment: AI16T_SUB2API_REDIS_PASSWORD
+    name: sub2api-ai16t-mac1-redis-data
+  core_data:
+    name: sub2api-ai16t-mac1-core-data

@@ -4,7 +4,7 @@ import { defineComponent, ref } from 'vue'
 
 import UsageView from '../UsageView.vue'
 
-const { list, exportList, getStats, getSnapshotV2, getById, getModelStats, listErrorLogs, routeQuery, aoaToSheet, sheetAddAoa, saveAs, xlsxWrite } = vi.hoisted(() => {
+const { list, exportList, getStats, getSnapshotV2, getById, getModelStats, listErrorLogs, routeQuery, saveAs } = vi.hoisted(() => {
   vi.stubGlobal('localStorage', {
     getItem: vi.fn(() => null),
     setItem: vi.fn(),
@@ -20,10 +20,7 @@ const { list, exportList, getStats, getSnapshotV2, getById, getModelStats, listE
     getModelStats: vi.fn(),
     listErrorLogs: vi.fn(),
     routeQuery: {} as Record<string, string>,
-		aoaToSheet: vi.fn(() => ({})),
-		sheetAddAoa: vi.fn(),
 		saveAs: vi.fn(),
-		xlsxWrite: vi.fn(() => new Uint8Array([1, 2, 3])),
   }
 })
 
@@ -71,16 +68,6 @@ vi.mock('@/api/admin/usage', () => ({
 }))
 
 vi.mock('file-saver', () => ({ saveAs }))
-
-vi.mock('xlsx', () => ({
-	utils: {
-		aoa_to_sheet: aoaToSheet,
-		sheet_add_aoa: sheetAddAoa,
-		book_new: vi.fn(() => ({})),
-		book_append_sheet: vi.fn(),
-	},
-	write: xlsxWrite,
-}))
 
 vi.mock('@/api/admin/ops', () => ({
   listErrorLogs,
@@ -647,6 +634,7 @@ describe('admin UsageView model audit export', () => {
 				cache_read_tokens: 0,
 				cache_creation_tokens: 0,
 				duration_ms: 10,
+				user_agent: '=cmd|formula',
 			}],
 			total: 1,
 			pages: 1,
@@ -657,10 +645,7 @@ describe('admin UsageView model audit export', () => {
 		})
 		getSnapshotV2.mockReset().mockResolvedValue({ trend: [], models: [], groups: [] })
 		getModelStats.mockReset().mockResolvedValue({ models: [] })
-		aoaToSheet.mockClear()
-		sheetAddAoa.mockClear()
 		saveAs.mockClear()
-		xlsxWrite.mockClear()
 	})
 
 	afterEach(() => {
@@ -675,15 +660,21 @@ describe('admin UsageView model audit export', () => {
 		await (wrapper.vm as any).exportToExcel()
 		await flushPromises()
 
-		const headers = aoaToSheet.mock.calls[0][0][0]
-		expect(headers.slice(4, 8)).toEqual([
-			'Requested model',
-			'Sent upstream model',
-			'Upstream response model',
-			'Upstream model mismatch',
-		])
-		const row = sheetAddAoa.mock.calls[0][1][0]
-		expect(row.slice(4, 8)).toEqual(['gpt-5.6-sol', 'gpt-5.5', 'gpt-5.4', 'Yes'])
 		expect(saveAs).toHaveBeenCalledTimes(1)
+		const [blob, filename] = saveAs.mock.calls[0]
+		expect(blob).toBeInstanceOf(Blob)
+		expect(blob.type).toBe('text/csv;charset=utf-8')
+		expect(filename).toMatch(/^usage_.*\.csv$/)
+		vi.useRealTimers()
+		const csv = await new Promise<string>((resolve, reject) => {
+			const reader = new FileReader()
+			reader.addEventListener('load', () => resolve(String(reader.result)))
+			reader.addEventListener('error', () => reject(reader.error))
+			reader.readAsText(blob)
+		})
+		const [headers, row] = csv.replace(/^\uFEFF/, '').split('\r\n')
+		expect(headers).toContain('"Requested model","Sent upstream model","Upstream response model","Upstream model mismatch"')
+		expect(row).toContain('"gpt-5.6-sol","gpt-5.5","gpt-5.4","Yes"')
+		expect(row).toContain('"\'=cmd|formula"')
 	})
 })
