@@ -34,6 +34,10 @@ generate_password_secret() {
 }
 
 generate_hex_secret "$runtime/core_signing_key"
+# Sub2API and Commercial Core run as different non-root UIDs.  Keep separate
+# mode-0600 bind-mount files with the same signing value so neither service has
+# to receive world-readable key material.
+cp "$runtime/core_signing_key" "$runtime/core_signing_key_sub2api"
 generate_hex_secret "$runtime/fingerprint_key"
 generate_hex_secret "$runtime/mock_provider_key"
 generate_hex_secret "$runtime/database_password"
@@ -80,6 +84,7 @@ release_tag="$(printf '%s' "$release_commit" | cut -c1-12)"
 unset database_password redis_password admin_password jwt_secret totp_key
 chmod 0600 \
   "$runtime/core_signing_key" \
+  "$runtime/core_signing_key_sub2api" \
   "$runtime/fingerprint_key" \
   "$runtime/mock_provider_key" \
   "$runtime/database_password" \
@@ -89,13 +94,9 @@ chmod 0600 \
   "$runtime/admin_password" \
   "$runtime/sub2api.env" \
   "$runtime/public.env"
-# These three files are bind-mounted into non-root containers.  The parent
-# directory remains root-owned mode 0700, and each mount is read-only, so host
-# users cannot traverse to the files while the intended container UIDs can
-# read them.  Password, JWT, TOTP, and generated admin secrets stay mode 0600.
-chmod 0644 \
-  "$runtime/core_signing_key" \
-  "$runtime/fingerprint_key" \
-  "$runtime/mock_provider_key"
+if [ "$(id -u)" -eq 0 ]; then
+  chown 65532:65532 "$runtime/core_signing_key" "$runtime/mock_provider_key"
+  chown 1000:1000 "$runtime/core_signing_key_sub2api" "$runtime/fingerprint_key"
+fi
 chmod 0700 "$runtime" "$runtime/backups"
 echo "PUBLIC_SANDBOX_RUNTIME_READY"

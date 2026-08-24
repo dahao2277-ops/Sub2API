@@ -58,7 +58,7 @@ x-sub2api-slot: &sub2api-slot
     commercial-core:
       condition: service_healthy
   volumes:
-    - ./.runtime/core_signing_key:/run/ai99t/core_signing_key:ro
+    - ./.runtime/core_signing_key_sub2api:/run/ai99t/core_signing_key:ro
     - ./.runtime/fingerprint_key:/run/ai99t/fingerprint_key:ro
   networks:
     - platform_b_private
@@ -102,7 +102,7 @@ services:
       - "127.0.0.1:${BLUE_LOOPBACK_PORT:-18181}:8080"
     volumes:
       - sub2api_blue_data:/app/data
-      - ./.runtime/core_signing_key:/run/ai99t/core_signing_key:ro
+      - ./.runtime/core_signing_key_sub2api:/run/ai99t/core_signing_key:ro
       - ./.runtime/fingerprint_key:/run/ai99t/fingerprint_key:ro
 
   sub2api-green:
@@ -111,7 +111,7 @@ services:
       - "127.0.0.1:${GREEN_LOOPBACK_PORT:-18182}:8080"
     volumes:
       - sub2api_green_data:/app/data
-      - ./.runtime/core_signing_key:/run/ai99t/core_signing_key:ro
+      - ./.runtime/core_signing_key_sub2api:/run/ai99t/core_signing_key:ro
       - ./.runtime/fingerprint_key:/run/ai99t/fingerprint_key:ro
 
   migration-check:
@@ -124,7 +124,7 @@ services:
       AI16T_HYBRID_ENABLED: "false"
     volumes:
       - migration_check_data:/app/data
-      - ./.runtime/core_signing_key:/run/ai99t/core_signing_key:ro
+      - ./.runtime/core_signing_key_sub2api:/run/ai99t/core_signing_key:ro
       - ./.runtime/fingerprint_key:/run/ai99t/fingerprint_key:ro
     networks:
       - platform_b_private
