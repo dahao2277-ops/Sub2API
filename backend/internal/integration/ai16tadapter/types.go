@@ -86,6 +86,14 @@ type CoreResult struct {
 	Replay                 bool
 }
 
+// CoreStreamChunk is one complete upstream SSE frame. Terminal is true only
+// for the protocol completion frame, which callers hold until projection has
+// been published after the authoritative Ledger settlement.
+type CoreStreamChunk struct {
+	Frame    []byte
+	Terminal bool
+}
+
 // Projection is a read-only convenience view for Sub2API UI and reporting.
 // Projection implementations must deduplicate on AuthoritativeRequestID.
 type Projection struct {
@@ -125,6 +133,18 @@ type ModelSource interface {
 // CommercialCore is the only financial authority.
 type CommercialCore interface {
 	Execute(ctx context.Context, request CoreRequest) (CoreResult, error)
+}
+
+// StreamingCommercialCore extends the financial authority with a bounded
+// streaming transport. onChunk must return only after the complete SSE frame
+// has been written and flushed, so cancellation propagates synchronously.
+type StreamingCommercialCore interface {
+	CommercialCore
+	ExecuteStream(
+		ctx context.Context,
+		request CoreRequest,
+		onChunk func(CoreStreamChunk) error,
+	) (CoreResult, error)
 }
 
 // ProjectionSink cannot mutate the Commercial Core. A write failure is

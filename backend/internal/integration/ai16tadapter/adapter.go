@@ -200,6 +200,116 @@ func (a *Adapter) Execute(ctx context.Context, request Request) (Result, error) 
 	return result, nil
 }
 
+// ExecuteStream preserves the same identity, drift and financial gates as
+// Execute, but releases each complete non-terminal SSE frame as it arrives.
+// The protocol terminal frame is held until the Core has settled and the
+// Ledger projection has been published.
+func (a *Adapter) ExecuteStream(
+	ctx context.Context,
+	request Request,
+	onChunk func(CoreStreamChunk) error,
+) (Result, error) {
+	if onChunk == nil {
+		return Result{}, ErrInvalidRequest
+	}
+	if err := validateRequest(request); err != nil {
+		return Result{}, err
+	}
+
+	principal, err := a.identity.AuthenticateAPIKey(ctx, a.fingerprint(request.RawAPIKey))
+	if err != nil {
+		return Result{}, ErrUnauthorized
+	}
+	if principal.KeyRevoked {
+		return Result{}, ErrAPIKeyRevoked
+	}
+	if !principal.UserEnabled {
+		return Result{}, ErrUserDisabled
+	}
+	if strings.TrimSpace(principal.UserID) == "" || strings.TrimSpace(principal.APICredentialID) == "" {
+		return Result{}, ErrUnauthorized
+	}
+	if a.emergencyGate.blocked(principal.UserID) {
+		return Result{}, ErrProjectionDriftActive
+	}
+	allowed, err := a.driftGate.AllowFinancialWrite(ctx, principal.UserID)
+	if err != nil {
+		return Result{}, ErrDriftStateUnavailable
+	}
+	if !allowed {
+		return Result{}, ErrProjectionDriftActive
+	}
+	mapping, err := a.models.ResolveModel(ctx, principal.Group, request.RequestedModel)
+	if err != nil || strings.TrimSpace(mapping.CoreModel) == "" {
+		return Result{}, ErrModelMappingMissing
+	}
+	streamingCore, ok := a.core.(StreamingCommercialCore)
+	if !ok {
+		return Result{}, ErrCoreExecutionFailed
+	}
+
+	terminal := make([]CoreStreamChunk, 0, 1)
+	coreResult, err := streamingCore.ExecuteStream(ctx, CoreRequest{
+		UserReference:         principal.UserID,
+		KeyReference:          principal.APICredentialID,
+		IdempotencyKey:        request.IdempotencyKey,
+		RequestHash:           canonicalRequestHash(principal, mapping.CoreModel, request.Payload),
+		Model:                 mapping.CoreModel,
+		Payload:               append([]byte(nil), request.Payload...),
+		FailurePlan:           cloneFailurePlan(request.FailurePlan),
+		ClientResponseDelayMS: request.ClientResponseDelayMS,
+	}, func(chunk CoreStreamChunk) error {
+		chunk.Frame = append([]byte(nil), chunk.Frame...)
+		if chunk.Terminal {
+			terminal = append(terminal, chunk)
+			return nil
+		}
+		return onChunk(chunk)
+	})
+	if err != nil {
+		return Result{}, ErrCoreExecutionFailed
+	}
+	if err := validateCoreResult(coreResult); err != nil {
+		return Result{}, err
+	}
+
+	projection := Projection{
+		AuthoritativeRequestID: coreResult.AuthoritativeRequestID,
+		LedgerReference:        coreResult.LedgerReference,
+		UserReference:          principal.UserID,
+		KeyReference:           principal.APICredentialID,
+		Model:                  mapping.CoreModel,
+		Status:                 coreResult.Status,
+		InputTokens:            coreResult.InputTokens,
+		OutputTokens:           coreResult.OutputTokens,
+		CustomerChargeMicro:    coreResult.CustomerChargeMicro,
+		ProviderCostMicro:      coreResult.ProviderCostMicro,
+		BalanceAfterMicro:      coreResult.BalanceAfterMicro,
+		RefundMicro:            coreResult.RefundMicro,
+		NetRevenueMicro:        coreResult.NetRevenueMicro,
+		Replay:                 coreResult.Replay,
+	}
+	result := Result{
+		Core:                 cloneCoreResult(coreResult),
+		FinanciallyCommitted: coreResult.Status == OutcomeSettled,
+	}
+	if err := a.projections.Publish(ctx, projection); err != nil {
+		result.ProjectionDrift = true
+		a.emergencyGate.block(principal.UserID)
+		recordCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), postSettlementDriftTimeout)
+		defer cancel()
+		if recordErr := a.driftGate.RecordProjectionDrift(recordCtx, projection, err); recordErr == nil {
+			result.DriftStateRecorded = true
+		}
+	}
+	for _, chunk := range terminal {
+		if err := onChunk(chunk); err != nil {
+			return result, fmt.Errorf("flush terminal stream frame: %w", err)
+		}
+	}
+	return result, nil
+}
+
 // ReconcileProjection is the only operation that clears a drift gate. The
 // caller must supply a freshly fetched Commercial Core projection; the gate
 // implementation atomically replaces the Sub2API view and clears the block.

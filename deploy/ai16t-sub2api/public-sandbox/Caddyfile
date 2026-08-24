@@ -4,7 +4,13 @@
 }
 
 {$AI99T_DOMAIN} {
-	encode zstd gzip
+	# Do not compress the two Hybrid API routes: their stream=true responses
+	# must reach the client frame-by-frame. Caddy automatically flushes
+	# text/event-stream responses; other site responses retain compression.
+	@compressible {
+		not path /v1/ai16t/chat/completions /v1/ai16t/responses
+	}
+	encode @compressible zstd gzip
 
 	header {
 		-Server

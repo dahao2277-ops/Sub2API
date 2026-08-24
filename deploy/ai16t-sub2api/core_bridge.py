@@ -11,6 +11,7 @@ import threading
 import time
 import urllib.error
 import urllib.request
+from collections.abc import Iterator
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
@@ -456,34 +457,18 @@ class HybridAuthority:
         return payload
 
     def execute(self, payload: dict[str, Any]) -> dict[str, Any]:
-        user_id, api_key_id = self._identity(
-            str(payload.get("UserReference", "")), str(payload.get("KeyReference", ""))
-        )
-        idempotency_key = str(payload.get("IdempotencyKey", ""))
-        request_hash = str(payload.get("RequestHash", ""))
-        model = str(payload.get("Model", ""))
-        request_payload = self._request_payload(str(payload.get("Payload", "")))
-        if (
-            not idempotency_key
-            or not request_hash
-            or model not in self.allowed_models
-            or request_payload.get("model") != model
-        ):
-            raise ValueError("invalid authority request")
-        failure_plan = payload.get("FailurePlan") or None
-        if self.provider_mode == "apiyi" and failure_plan:
-            raise PermissionError("test hooks are disabled for APIYI")
-        authoritative_request_id = "sub2_" + hashlib.sha256(
-            f"{user_id}\0{idempotency_key}".encode()
-        ).hexdigest()[:40]
-        replay = self._request_replay(authoritative_request_id)
-        prompt = json.dumps(request_payload, separators=(",", ":"), ensure_ascii=False)
-        max_output = request_payload.get(
-            "max_output_tokens",
-            request_payload.get("max_completion_tokens", request_payload.get("max_tokens", 256)),
-        )
-        if not isinstance(max_output, int) or not 1 <= max_output <= 4096:
-            raise ValueError("max output tokens are invalid")
+        (
+            user_id,
+            api_key_id,
+            idempotency_key,
+            model,
+            request_payload,
+            failure_plan,
+            authoritative_request_id,
+            replay,
+            prompt,
+            max_output,
+        ) = self._prepare_execution(payload)
         if request_payload.get("stream", False):
             chunks = list(
                 self.platform.process_stream_request(
@@ -516,12 +501,97 @@ class HybridAuthority:
         )
         return self._result(settlement, replay)
 
+    def _prepare_execution(self, payload: dict[str, Any]) -> tuple[Any, ...]:
+        user_id, api_key_id = self._identity(
+            str(payload.get("UserReference", "")), str(payload.get("KeyReference", ""))
+        )
+        idempotency_key = str(payload.get("IdempotencyKey", ""))
+        request_hash = str(payload.get("RequestHash", ""))
+        model = str(payload.get("Model", ""))
+        request_payload = self._request_payload(str(payload.get("Payload", "")))
+        if (
+            not idempotency_key
+            or not request_hash
+            or model not in self.allowed_models
+            or request_payload.get("model") != model
+        ):
+            raise ValueError("invalid authority request")
+        failure_plan = payload.get("FailurePlan") or None
+        if self.provider_mode == "apiyi" and failure_plan:
+            raise PermissionError("test hooks are disabled for APIYI")
+        authoritative_request_id = "sub2_" + hashlib.sha256(
+            f"{user_id}\0{idempotency_key}".encode()
+        ).hexdigest()[:40]
+        replay = self._request_replay(authoritative_request_id)
+        prompt = json.dumps(request_payload, separators=(",", ":"), ensure_ascii=False)
+        max_output = request_payload.get(
+            "max_output_tokens",
+            request_payload.get("max_completion_tokens", request_payload.get("max_tokens", 256)),
+        )
+        if not isinstance(max_output, int) or not 1 <= max_output <= 4096:
+            raise ValueError("max output tokens are invalid")
+        return (
+            user_id,
+            api_key_id,
+            idempotency_key,
+            model,
+            request_payload,
+            failure_plan,
+            authoritative_request_id,
+            replay,
+            prompt,
+            max_output,
+        )
+
+    def execute_stream(self, payload: dict[str, Any]) -> Iterator[tuple[str, Any]]:
+        prepared = self._prepare_execution(payload)
+        if not prepared[4].get("stream", False):
+            raise ValueError("stream endpoint requires stream=true")
+        return self._execute_stream(prepared)
+
+    def _execute_stream(self, prepared: tuple[Any, ...]) -> Iterator[tuple[str, Any]]:
+        (
+            user_id,
+            api_key_id,
+            idempotency_key,
+            model,
+            _request_payload,
+            failure_plan,
+            authoritative_request_id,
+            replay,
+            prompt,
+            max_output,
+        ) = prepared
+        iterator = self.platform.process_stream_request(
+            user_id=user_id,
+            api_key_id=api_key_id,
+            provider=self.ledger_provider,
+            model=model,
+            prompt=prompt,
+            request_id=authoritative_request_id,
+            idempotency_key=idempotency_key,
+            failure_plan=failure_plan,
+            max_input_tokens=4096,
+            max_output_tokens=max_output,
+        )
+        try:
+            for chunk in iterator:
+                yield (
+                    "terminal" if chunk.finish_reason else "chunk",
+                    chunk.content.encode("utf-8"),
+                )
+        finally:
+            iterator.close()
+        settlement = self.platform._existing_settlement(authoritative_request_id)
+        yield "settlement", self._result(settlement, replay, include_response=False)
+
     def _result(
         self,
         settlement: Any,
         replay: bool,
         response_override: bytes | None = None,
         content_type: str = "application/json",
+        include_response: bool = True,
     ) -> dict[str, Any]:
         with self.platform.database.read() as connection:
             ledger = connection.execute(
@@ -535,8 +605,10 @@ class HybridAuthority:
             ).fetchone()
         refund = int(refund_row["value"]) if refund_row else 0
         revenue = int(settlement.revenue_micro)
-        response = response_override or decode_raw_response(settlement.content)
-        if response is None:
+        response = b""
+        if include_response:
+            response = response_override or decode_raw_response(settlement.content)
+        if include_response and response is None:
             response = json.dumps(
                 {
                     "id": settlement.request_id,
@@ -653,6 +725,7 @@ AUTHORITY = HybridAuthority()
 
 class Handler(BaseHTTPRequestHandler):
     server_version = "AI16TCoreBridge/1"
+    protocol_version = "HTTP/1.1"
 
     def log_message(self, format_string: str, *args: Any) -> None:
         del format_string, args
@@ -674,6 +747,43 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(encoded)
 
+    def _write_stream_chunk(self, payload: bytes) -> None:
+        self.wfile.write(f"{len(payload):x}\r\n".encode("ascii"))
+        self.wfile.write(payload)
+        self.wfile.write(b"\r\n")
+        self.wfile.flush()
+
+    def _stream(self, iterator: Iterator[tuple[str, Any]]) -> None:
+        self.send_response(200)
+        self.send_header("Content-Type", "text/event-stream")
+        self.send_header("Cache-Control", "no-cache, no-store, no-transform")
+        self.send_header("X-Accel-Buffering", "no")
+        self.send_header("Transfer-Encoding", "chunked")
+        self.send_header("Connection", "close")
+        self.end_headers()
+        try:
+            for event, value in iterator:
+                if event in ("chunk", "terminal"):
+                    data = json.dumps(
+                        {"frame": base64.b64encode(value).decode("ascii")},
+                        separators=(",", ":"),
+                    )
+                else:
+                    data = json.dumps(value, separators=(",", ":"))
+                encoded = f"event: {event}\ndata: {data}\n\n".encode("utf-8")
+                self._write_stream_chunk(encoded)
+            self.wfile.write(b"0\r\n\r\n")
+            self.wfile.flush()
+        except (BrokenPipeError, ConnectionResetError):
+            iterator.close()
+        except Exception:
+            # Headers may already be committed.  Closing is safer than writing a
+            # second JSON response into an SSE body; the Ledger recovery state is
+            # finalized by the Commercial Core iterator.
+            iterator.close()
+        finally:
+            self.close_connection = True
+
     def _dispatch(self) -> None:
         try:
             body = self._body()
@@ -693,6 +803,9 @@ class Handler(BaseHTTPRequestHandler):
                 self._write(200, AUTHORITY.projection(user))
                 return
             payload = json.loads(body or b"{}")
+            if self.command == "POST" and parsed.path == "/internal/v1/execute-stream":
+                self._stream(AUTHORITY.execute_stream(payload))
+                return
             if self.command == "POST" and parsed.path == "/internal/v1/execute":
                 self._write(200, AUTHORITY.execute(payload))
                 return

@@ -5,7 +5,7 @@ import json
 import time
 import urllib.error
 import urllib.request
-from collections.abc import Iterator
+from collections.abc import Generator, Iterator
 from typing import Any
 from urllib.parse import urlsplit
 
@@ -16,6 +16,7 @@ from secret_provider_client import UnixSecretResolver
 RAW_RESPONSE_PREFIX = "ai16t-raw-v1:"
 MAX_UPSTREAM_RESPONSE = 4 * 1024 * 1024
 MAX_SSE_LINE = 512 * 1024
+MAX_SSE_FRAME = 1024 * 1024
 
 
 class APIYIProvider:
@@ -96,38 +97,35 @@ class APIYIProvider:
         cumulative = Usage(0, 0, 0)
         usage_seen = False
         total_bytes = 0
+        frame = bytearray()
         try:
             while True:
                 line = response.readline(MAX_SSE_LINE + 1)
                 if not line:
+                    if frame:
+                        usage_seen, cumulative = yield from self._emit_frame(
+                            bytes(frame), endpoint, cumulative, usage_seen
+                        )
                     break
                 total_bytes += len(line)
                 if len(line) > MAX_SSE_LINE or total_bytes > MAX_UPSTREAM_RESPONSE:
                     raise ProviderFailure(
                         "provider_response_too_large", retryable=False, usage_source="missing"
                     )
-                usage = self._sse_usage(line, endpoint)
-                delta = Usage(0, 0, 0)
-                if usage is not None:
-                    if (
-                        usage.input_tokens < cumulative.input_tokens
-                        or usage.output_tokens < cumulative.output_tokens
-                        or usage.cached_tokens < cumulative.cached_tokens
-                    ):
-                        raise ProviderFailure(
-                            "provider_usage_regressed",
-                            retryable=False,
-                            usage_source="invalid",
-                        )
-                    delta = Usage(
-                        usage.input_tokens - cumulative.input_tokens,
-                        usage.output_tokens - cumulative.output_tokens,
-                        usage.cached_tokens - cumulative.cached_tokens,
+                frame.extend(line)
+                if len(frame) > MAX_SSE_FRAME:
+                    raise ProviderFailure(
+                        "provider_response_too_large", retryable=False, usage_source="missing"
                     )
-                    cumulative = usage
-                    usage_seen = True
-                finish_reason = self._sse_finish_reason(line, endpoint)
-                yield StreamChunk(line.decode("utf-8"), delta, finish_reason)
+                if line not in (b"\n", b"\r\n"):
+                    continue
+                if not bytes(frame).strip():
+                    frame.clear()
+                    continue
+                usage_seen, cumulative = yield from self._emit_frame(
+                    bytes(frame), endpoint, cumulative, usage_seen
+                )
+                frame.clear()
         except UnicodeDecodeError as error:
             raise ProviderFailure(
                 "provider_invalid_stream", retryable=False, usage_source="missing"
@@ -138,6 +136,35 @@ class APIYIProvider:
             raise ProviderFailure(
                 "provider_stream_usage_missing", retryable=False, usage_source="missing"
             )
+
+    def _emit_frame(
+        self,
+        frame: bytes,
+        endpoint: str,
+        cumulative: Usage,
+        usage_seen: bool,
+    ) -> Generator[StreamChunk, None, tuple[bool, Usage]]:
+        usage = self._sse_usage(frame, endpoint)
+        delta = Usage(0, 0, 0)
+        if usage is not None:
+            if (
+                usage.input_tokens < cumulative.input_tokens
+                or usage.output_tokens < cumulative.output_tokens
+                or usage.cached_tokens < cumulative.cached_tokens
+            ):
+                raise ProviderFailure(
+                    "provider_usage_regressed", retryable=False, usage_source="invalid"
+                )
+            delta = Usage(
+                usage.input_tokens - cumulative.input_tokens,
+                usage.output_tokens - cumulative.output_tokens,
+                usage.cached_tokens - cumulative.cached_tokens,
+            )
+            cumulative = usage
+            usage_seen = True
+        finish_reason = self._sse_finish_reason(frame, endpoint)
+        yield StreamChunk(frame.decode("utf-8"), delta, finish_reason)
+        return usage_seen, cumulative
 
     def _payload(self, prompt: str, model: str, *, stream: bool) -> tuple[str, dict[str, Any]]:
         try:
@@ -238,16 +265,29 @@ class APIYIProvider:
         payload = cls._sse_payload(line)
         if payload is None:
             return None
+        # APIYI may emit response.incomplete snapshots whose token counters are
+        # estimates and can be greater than the authoritative completed Usage.
+        # Billing accepts only the final response.completed event.
+        if endpoint == "responses" and payload.get("type") != "response.completed":
+            return None
         try:
             return cls._usage(payload, endpoint)
         except (KeyError, TypeError, ValueError):
             return None
 
     @staticmethod
-    def _sse_payload(line: bytes) -> dict[str, Any] | None:
-        if not line.startswith(b"data:"):
+    def _sse_data(frame: bytes) -> bytes | None:
+        values = []
+        for line in frame.splitlines():
+            if line.startswith(b"data:"):
+                values.append(line[5:].lstrip())
+        if not values:
             return None
-        value = line[5:].strip()
+        return b"\n".join(values).strip()
+
+    @classmethod
+    def _sse_payload(cls, frame: bytes) -> dict[str, Any] | None:
+        value = cls._sse_data(frame)
         if not value or value == b"[DONE]":
             return None
         try:
@@ -257,17 +297,16 @@ class APIYIProvider:
         return payload if isinstance(payload, dict) else None
 
     @classmethod
-    def _sse_finish_reason(cls, line: bytes, endpoint: str) -> str | None:
-        if line.startswith(b"data:") and line[5:].strip() == b"[DONE]":
+    def _sse_finish_reason(cls, frame: bytes, endpoint: str) -> str | None:
+        if cls._sse_data(frame) == b"[DONE]":
             return "stop"
-        payload = cls._sse_payload(line)
+        payload = cls._sse_payload(frame)
         if payload is None:
             return None
         if endpoint == "chat.completions":
-            choices = payload.get("choices")
-            if isinstance(choices, list) and choices and isinstance(choices[0], dict):
-                value = choices[0].get("finish_reason")
-                return str(value) if value else None
+            # Chat's choices finish_reason precedes the include_usage frame.
+            # Only [DONE] is terminal; otherwise holding this frame until after
+            # settlement would reorder it behind the final usage event.
             return None
         event_type = payload.get("type")
         return "stop" if event_type in ("response.completed", "response.failed") else None

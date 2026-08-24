@@ -219,14 +219,53 @@ func (h *ai16tHybridHandler) executeEndpoint(c *gin.Context, endpoint string) {
 		middleware.AbortWithError(c, http.StatusForbidden, "AI16T_TEST_HOOK_DISABLED", "isolated test hooks are disabled")
 		return
 	}
-	result, err := adapter.Execute(requestContext, ai16tadapter.Request{
+	adapterRequest := ai16tadapter.Request{
 		RawAPIKey:             rawAPIKey,
 		IdempotencyKey:        idempotencyKey,
 		RequestedModel:        request.Model,
 		Payload:               body,
 		FailurePlan:           failurePlan,
 		ClientResponseDelayMS: clientDelay,
-	})
+	}
+	if request.Stream {
+		streamStarted := false
+		controller := http.NewResponseController(c.Writer)
+		result, streamErr := adapter.ExecuteStream(requestContext, adapterRequest, func(chunk ai16tadapter.CoreStreamChunk) error {
+			select {
+			case <-c.Request.Context().Done():
+				return c.Request.Context().Err()
+			default:
+			}
+			if !streamStarted {
+				c.Header("Content-Type", "text/event-stream")
+				c.Header("Cache-Control", "no-cache, no-store, no-transform")
+				c.Header("X-Accel-Buffering", "no")
+				c.Status(http.StatusOK)
+				streamStarted = true
+			}
+			if _, err := c.Writer.Write(chunk.Frame); err != nil {
+				return err
+			}
+			return controller.Flush()
+		})
+		if streamErr != nil {
+			if streamStarted {
+				return
+			}
+			status, code := hybridError(streamErr)
+			middleware.AbortWithError(c, status, code, code)
+			return
+		}
+		if !streamStarted {
+			c.JSON(http.StatusBadGateway, gin.H{"error": gin.H{"code": "AI16T_PROVIDER_FAILED", "message": "provider request failed"}})
+			return
+		}
+		// The stream terminal frame has already been flushed by ExecuteStream,
+		// after authoritative settlement and projection publication.
+		_ = result
+		return
+	}
+	result, err := adapter.Execute(requestContext, adapterRequest)
 	if err != nil {
 		status, code := hybridError(err)
 		middleware.AbortWithError(c, status, code, code)

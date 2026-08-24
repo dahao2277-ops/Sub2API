@@ -26,6 +26,20 @@ class _Response:
     def read(self, _limit: int) -> bytes:
         return self.body
 
+    def close(self) -> None:
+        return None
+
+
+class _StreamResponse:
+    def __init__(self, frames: list[bytes]):
+        self.lines = iter(b"".join(frames).splitlines(keepends=True))
+
+    def readline(self, _limit: int) -> bytes:
+        return next(self.lines, b"")
+
+    def close(self) -> None:
+        return None
+
 
 class APIYIProviderTests(unittest.TestCase):
     def test_nonstream_preserves_tool_call_response_and_usage(self) -> None:
@@ -93,6 +107,75 @@ class APIYIProviderTests(unittest.TestCase):
         material = SecretMaterial("apiyi/prod", 2, "sk-super-sensitive")
         self.assertEqual(material.reveal(), "sk-super-sensitive")
         self.assertNotIn("super-sensitive", repr(material))
+
+    def test_stream_emits_complete_frames_and_terminal_after_usage(self) -> None:
+        provider = APIYIProvider(
+            "https://api.apiyi.com/v1", _Resolver(), "apiyi/integration"
+        )
+        frames = [
+            b'data: {"choices":[{"delta":{"content":"one"}}]}\n\n',
+            b'data: {"choices":[],"usage":{"prompt_tokens":7,"completion_tokens":3}}\n\n',
+            b"data: [DONE]\n\n",
+        ]
+        prompt = json.dumps(
+            {
+                "_ai16t_endpoint": "chat.completions",
+                "model": "gpt-test",
+                "messages": [{"role": "user", "content": "count"}],
+                "stream": True,
+            }
+        )
+        with patch("urllib.request.urlopen", return_value=_StreamResponse(frames)):
+            chunks = list(
+                provider.stream(
+                    supplier_id="apiyi-canary", model="gpt-test", prompt=prompt
+                )
+            )
+
+        self.assertEqual([chunk.content.encode() for chunk in chunks], frames)
+        self.assertEqual(
+            [
+                (chunk.usage_delta.input_tokens, chunk.usage_delta.output_tokens)
+                for chunk in chunks
+            ],
+            [(0, 0), (7, 3), (0, 0)],
+        )
+        self.assertEqual([chunk.finish_reason for chunk in chunks], [None, None, "stop"])
+
+    def test_responses_completed_frame_is_terminal_and_carries_usage(self) -> None:
+        provider = APIYIProvider(
+            "https://api.apiyi.com/v1", _Resolver(), "apiyi/integration"
+        )
+        frames = [
+            b'data: {"type":"response.output_text.delta","delta":"one"}\n\n',
+            b'data: {"type":"response.incomplete","response":{"usage":{"input_tokens":35,"output_tokens":240}}}\n\n',
+            b'data: {"type":"response.completed","response":{"usage":{"input_tokens":9,"output_tokens":4}}}\n\n',
+        ]
+        prompt = json.dumps(
+            {
+                "_ai16t_endpoint": "responses",
+                "model": "gpt-test",
+                "input": "count",
+                "stream": True,
+            }
+        )
+        with patch("urllib.request.urlopen", return_value=_StreamResponse(frames)):
+            chunks = list(
+                provider.stream(
+                    supplier_id="apiyi-canary", model="gpt-test", prompt=prompt
+                )
+            )
+
+        self.assertEqual([chunk.content.encode() for chunk in chunks], frames)
+        self.assertEqual(chunks[-1].finish_reason, "stop")
+        self.assertEqual(
+            (chunks[-2].usage_delta.input_tokens, chunks[-2].usage_delta.output_tokens),
+            (0, 0),
+        )
+        self.assertEqual(
+            (chunks[-1].usage_delta.input_tokens, chunks[-1].usage_delta.output_tokens),
+            (9, 4),
+        )
 
 
 if __name__ == "__main__":

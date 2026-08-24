@@ -1,11 +1,13 @@
 package ai16tadapter
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"crypto/hmac"
 	"crypto/rand"
 	"crypto/sha256"
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -20,10 +22,12 @@ import (
 
 const (
 	coreExecutePath       = "/internal/v1/execute"
+	coreExecuteStreamPath = "/internal/v1/execute-stream"
 	coreProjectionPath    = "/internal/v1/projection"
 	coreRefundPath        = "/internal/v1/refund"
 	coreHealthPath        = "/internal/v1/health"
 	defaultCoreBodyLimit  = 2 << 20
+	defaultCoreFrameLimit = 1 << 20
 	minimumSigningKeySize = 32
 )
 
@@ -43,7 +47,10 @@ func NewHTTPCommercialCore(baseURL string, signingKey []byte, client *http.Clien
 		return nil, ErrInvalidRequest
 	}
 	if client == nil {
-		client = &http.Client{Timeout: 20 * time.Second}
+		// Request contexts and the Commercial Core's provider/stream duration
+		// limits bound work. A client-wide deadline would truncate healthy SSE
+		// responses whose total duration exceeds a non-stream request timeout.
+		client = &http.Client{}
 	}
 	return &HTTPCommercialCore{
 		baseURL: baseURL,
@@ -57,6 +64,106 @@ func (c *HTTPCommercialCore) Execute(ctx context.Context, request CoreRequest) (
 	var result CoreResult
 	if err := c.do(ctx, http.MethodPost, coreExecutePath, request, &result); err != nil {
 		return CoreResult{}, err
+	}
+	return result, nil
+}
+
+func (c *HTTPCommercialCore) ExecuteStream(
+	ctx context.Context,
+	request CoreRequest,
+	onChunk func(CoreStreamChunk) error,
+) (CoreResult, error) {
+	if onChunk == nil {
+		return CoreResult{}, ErrInvalidRequest
+	}
+	httpRequest, err := c.newSignedRequest(ctx, http.MethodPost, coreExecuteStreamPath, request)
+	if err != nil {
+		return CoreResult{}, err
+	}
+	response, err := c.client.Do(httpRequest)
+	if err != nil {
+		return CoreResult{}, fmt.Errorf("call core stream: %w", err)
+	}
+	defer response.Body.Close()
+	if response.StatusCode < 200 || response.StatusCode >= 300 {
+		return CoreResult{}, fmt.Errorf("core rejected stream request with status %d", response.StatusCode)
+	}
+	if !strings.HasPrefix(strings.ToLower(response.Header.Get("Content-Type")), "text/event-stream") {
+		return CoreResult{}, errors.New("core stream response has invalid content type")
+	}
+
+	scanner := bufio.NewScanner(response.Body)
+	scanner.Buffer(make([]byte, 4096), defaultCoreFrameLimit*2)
+	event := ""
+	data := ""
+	settled := false
+	var result CoreResult
+	handle := func() error {
+		if event == "" && data == "" {
+			return nil
+		}
+		if settled {
+			return errors.New("core emitted data after settlement")
+		}
+		switch event {
+		case "chunk", "terminal":
+			var envelope struct {
+				Frame string `json:"frame"`
+			}
+			if err := json.Unmarshal([]byte(data), &envelope); err != nil || envelope.Frame == "" {
+				return errors.New("core emitted an invalid stream frame")
+			}
+			frame, err := base64.StdEncoding.DecodeString(envelope.Frame)
+			if err != nil || len(frame) == 0 || len(frame) > defaultCoreFrameLimit {
+				return errors.New("core emitted an invalid stream frame")
+			}
+			if err := onChunk(CoreStreamChunk{Frame: frame, Terminal: event == "terminal"}); err != nil {
+				return fmt.Errorf("write downstream stream frame: %w", err)
+			}
+		case "settlement":
+			if err := json.Unmarshal([]byte(data), &result); err != nil {
+				return errors.New("core emitted an invalid settlement")
+			}
+			settled = true
+		default:
+			return errors.New("core emitted an unknown stream event")
+		}
+		return nil
+	}
+	for scanner.Scan() {
+		line := scanner.Text()
+		if line == "" {
+			if err := handle(); err != nil {
+				return CoreResult{}, err
+			}
+			event, data = "", ""
+			continue
+		}
+		if strings.HasPrefix(line, ":") {
+			continue
+		}
+		if strings.HasPrefix(line, "event:") {
+			event = strings.TrimSpace(strings.TrimPrefix(line, "event:"))
+			continue
+		}
+		if strings.HasPrefix(line, "data:") {
+			value := strings.TrimSpace(strings.TrimPrefix(line, "data:"))
+			if data != "" {
+				data += "\n"
+			}
+			data += value
+		}
+	}
+	if err := scanner.Err(); err != nil {
+		return CoreResult{}, fmt.Errorf("read core stream: %w", err)
+	}
+	if event != "" || data != "" {
+		if err := handle(); err != nil {
+			return CoreResult{}, err
+		}
+	}
+	if !settled {
+		return CoreResult{}, errors.New("core stream ended without settlement")
 	}
 	return result, nil
 }
@@ -98,33 +205,10 @@ func (c *HTTPCommercialCore) Refund(ctx context.Context, request RefundRequest) 
 }
 
 func (c *HTTPCommercialCore) do(ctx context.Context, method, path string, input, output any) error {
-	body := []byte(nil)
-	var err error
-	if input != nil {
-		body, err = json.Marshal(input)
-		if err != nil {
-			return fmt.Errorf("marshal core request: %w", err)
-		}
-	}
-	timestamp := strconv.FormatInt(c.now().UTC().Unix(), 10)
-	nonceBytes := make([]byte, 24)
-	if _, err := rand.Read(nonceBytes); err != nil {
-		return fmt.Errorf("create signing nonce: %w", err)
-	}
-	nonce := hex.EncodeToString(nonceBytes)
-	digest := sha256.Sum256(body)
-	canonical := strings.Join([]string{method, path, timestamp, nonce, hex.EncodeToString(digest[:])}, "\n")
-	mac := hmac.New(sha256.New, c.key)
-	_, _ = mac.Write([]byte(canonical))
-
-	httpRequest, err := http.NewRequestWithContext(ctx, method, c.baseURL+path, bytes.NewReader(body))
+	httpRequest, err := c.newSignedRequest(ctx, method, path, input)
 	if err != nil {
-		return fmt.Errorf("create core request: %w", err)
+		return err
 	}
-	httpRequest.Header.Set("Content-Type", "application/json")
-	httpRequest.Header.Set("X-AI16T-Timestamp", timestamp)
-	httpRequest.Header.Set("X-AI16T-Nonce", nonce)
-	httpRequest.Header.Set("X-AI16T-Signature", hex.EncodeToString(mac.Sum(nil)))
 
 	response, err := c.client.Do(httpRequest)
 	if err != nil {
@@ -146,6 +230,41 @@ func (c *HTTPCommercialCore) do(ctx context.Context, method, path string, input,
 		return fmt.Errorf("decode core response: %w", err)
 	}
 	return nil
+}
+
+func (c *HTTPCommercialCore) newSignedRequest(
+	ctx context.Context,
+	method, path string,
+	input any,
+) (*http.Request, error) {
+	body := []byte(nil)
+	var err error
+	if input != nil {
+		body, err = json.Marshal(input)
+		if err != nil {
+			return nil, fmt.Errorf("marshal core request: %w", err)
+		}
+	}
+	timestamp := strconv.FormatInt(c.now().UTC().Unix(), 10)
+	nonceBytes := make([]byte, 24)
+	if _, err := rand.Read(nonceBytes); err != nil {
+		return nil, fmt.Errorf("create signing nonce: %w", err)
+	}
+	nonce := hex.EncodeToString(nonceBytes)
+	digest := sha256.Sum256(body)
+	canonical := strings.Join([]string{method, path, timestamp, nonce, hex.EncodeToString(digest[:])}, "\n")
+	mac := hmac.New(sha256.New, c.key)
+	_, _ = mac.Write([]byte(canonical))
+
+	httpRequest, err := http.NewRequestWithContext(ctx, method, c.baseURL+path, bytes.NewReader(body))
+	if err != nil {
+		return nil, fmt.Errorf("create core request: %w", err)
+	}
+	httpRequest.Header.Set("Content-Type", "application/json")
+	httpRequest.Header.Set("X-AI16T-Timestamp", timestamp)
+	httpRequest.Header.Set("X-AI16T-Nonce", nonce)
+	httpRequest.Header.Set("X-AI16T-Signature", hex.EncodeToString(mac.Sum(nil)))
+	return httpRequest, nil
 }
 
 type StaticIdentitySource struct {

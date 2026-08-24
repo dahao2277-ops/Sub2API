@@ -35,12 +35,29 @@ type coreStub struct {
 	request  CoreRequest
 	requests []CoreRequest
 	calls    int
+	stream   []CoreStreamChunk
 }
 
 func (s *coreStub) Execute(_ context.Context, request CoreRequest) (CoreResult, error) {
 	s.calls++
 	s.request = request
 	s.requests = append(s.requests, request)
+	return s.result, s.err
+}
+
+func (s *coreStub) ExecuteStream(
+	_ context.Context,
+	request CoreRequest,
+	onChunk func(CoreStreamChunk) error,
+) (CoreResult, error) {
+	s.calls++
+	s.request = request
+	s.requests = append(s.requests, request)
+	for _, chunk := range s.stream {
+		if err := onChunk(chunk); err != nil {
+			return CoreResult{}, err
+		}
+	}
 	return s.result, s.err
 }
 
@@ -141,6 +158,51 @@ func TestExecutePassesOnlyReferencesToCommercialCore(t *testing.T) {
 	require.Len(t, core.request.RequestHash, 64)
 	require.Equal(t, "ledger-1", projections.projection.LedgerReference)
 	require.Equal(t, int64(850), projections.projection.BalanceAfterMicro)
+}
+
+func TestExecuteStreamFlushesContentThenProjectsThenFlushesTerminal(t *testing.T) {
+	adapter, _, core, projections, _ := validFixture(t)
+	core.stream = []CoreStreamChunk{
+		{Frame: []byte("data: first\n\n")},
+		{Frame: []byte("data: [DONE]\n\n"), Terminal: true},
+	}
+	request := validRequest()
+	request.Payload = []byte(`{"stream":true}`)
+	order := make([]string, 0, 3)
+
+	result, err := adapter.ExecuteStream(context.Background(), request, func(chunk CoreStreamChunk) error {
+		if projections.calls == 0 {
+			order = append(order, "content-before-projection")
+		} else {
+			order = append(order, "terminal-after-projection")
+		}
+		return nil
+	})
+
+	require.NoError(t, err)
+	require.True(t, result.FinanciallyCommitted)
+	require.Equal(t, []string{"content-before-projection", "terminal-after-projection"}, order)
+	require.Equal(t, 1, projections.calls)
+	require.Equal(t, 1, core.calls)
+}
+
+func TestExecuteStreamPropagatesWriterCancellationWithoutRetry(t *testing.T) {
+	adapter, _, core, projections, _ := validFixture(t)
+	core.stream = []CoreStreamChunk{
+		{Frame: []byte("data: first\n\n")},
+		{Frame: []byte("data: second\n\n")},
+	}
+	writes := 0
+
+	_, err := adapter.ExecuteStream(context.Background(), validRequest(), func(CoreStreamChunk) error {
+		writes++
+		return errors.New("fixture client disconnected")
+	})
+
+	require.ErrorIs(t, err, ErrCoreExecutionFailed)
+	require.Equal(t, 1, writes)
+	require.Equal(t, 1, core.calls)
+	require.Zero(t, projections.calls)
 }
 
 func TestExecuteBlocksRevokedKeyBeforeCore(t *testing.T) {
