@@ -60,6 +60,11 @@ type User struct {
 	// 避免每请求查 DB。字段不持久化到数据库。
 	UserGroupRPMOverride *int
 
+	// APIKeyCount fields are transient auth-cache projections used by the
+	// first-customer Canary admission gate. They are never persisted on users.
+	APIKeyCount         int64
+	APIKeyCountResolved bool
+
 	APIKeys       []APIKey
 	Subscriptions []UserSubscription
 }

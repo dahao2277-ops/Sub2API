@@ -86,6 +86,10 @@ func (c *HTTPCommercialCore) ExecuteStream(
 	}
 	defer response.Body.Close()
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
+		body, readErr := io.ReadAll(io.LimitReader(response.Body, defaultCoreBodyLimit+1))
+		if readErr == nil && len(body) <= defaultCoreBodyLimit && isAuthoritativeCanaryLimit(response.StatusCode, body) {
+			return CoreResult{}, ErrCanaryAuthoritativeLimit
+		}
 		return CoreResult{}, fmt.Errorf("core rejected stream request with status %d", response.StatusCode)
 	}
 	if !strings.HasPrefix(strings.ToLower(response.Header.Get("Content-Type")), "text/event-stream") {
@@ -224,12 +228,25 @@ func (c *HTTPCommercialCore) do(ctx context.Context, method, path string, input,
 		return errors.New("core response exceeds limit")
 	}
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
+		if isAuthoritativeCanaryLimit(response.StatusCode, responseBody) {
+			return ErrCanaryAuthoritativeLimit
+		}
 		return fmt.Errorf("core rejected request with status %d", response.StatusCode)
 	}
 	if err := json.Unmarshal(responseBody, output); err != nil {
 		return fmt.Errorf("decode core response: %w", err)
 	}
 	return nil
+}
+
+func isAuthoritativeCanaryLimit(status int, body []byte) bool {
+	if status != http.StatusTooManyRequests {
+		return false
+	}
+	var envelope struct {
+		Error string `json:"error"`
+	}
+	return json.Unmarshal(body, &envelope) == nil && envelope.Error == "CANARY_BUDGET_LIMIT"
 }
 
 func (c *HTTPCommercialCore) newSignedRequest(

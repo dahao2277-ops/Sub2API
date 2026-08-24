@@ -305,6 +305,21 @@ func TestExecuteReturnsStablePublicErrors(t *testing.T) {
 	require.NotContains(t, err.Error(), "internal core detail")
 }
 
+func TestExecuteAndStreamPreserveAuthoritativeCanaryLimit(t *testing.T) {
+	adapter, _, core, projections, _ := validFixture(t)
+	core.err = ErrCanaryAuthoritativeLimit
+
+	_, err := adapter.Execute(context.Background(), validRequest())
+	require.ErrorIs(t, err, ErrCanaryAuthoritativeLimit)
+	_, err = adapter.ExecuteStream(
+		context.Background(),
+		validRequest(),
+		func(CoreStreamChunk) error { return nil },
+	)
+	require.ErrorIs(t, err, ErrCanaryAuthoritativeLimit)
+	require.Zero(t, projections.calls)
+}
+
 func TestCanonicalRequestHashBindsIdentityModelAndPayload(t *testing.T) {
 	principal := Principal{UserID: "user-1", APICredentialID: "key-1"}
 	base := canonicalRequestHash(principal, "model-a", []byte("payload-a"))

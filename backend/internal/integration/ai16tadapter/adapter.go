@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"encoding/binary"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"strings"
 	"sync"
@@ -156,6 +157,9 @@ func (a *Adapter) Execute(ctx context.Context, request Request) (Result, error) 
 		ClientResponseDelayMS: request.ClientResponseDelayMS,
 	})
 	if err != nil {
+		if errors.Is(err, ErrCanaryAuthoritativeLimit) {
+			return Result{}, ErrCanaryAuthoritativeLimit
+		}
 		return Result{}, ErrCoreExecutionFailed
 	}
 	if err := validateCoreResult(coreResult); err != nil {
@@ -164,6 +168,7 @@ func (a *Adapter) Execute(ctx context.Context, request Request) (Result, error) 
 
 	projection := Projection{
 		AuthoritativeRequestID: coreResult.AuthoritativeRequestID,
+		IdempotencyReference:   CanaryIdempotencyReference(request.IdempotencyKey),
 		LedgerReference:        coreResult.LedgerReference,
 		UserReference:          principal.UserID,
 		KeyReference:           principal.APICredentialID,
@@ -267,6 +272,9 @@ func (a *Adapter) ExecuteStream(
 		return onChunk(chunk)
 	})
 	if err != nil {
+		if errors.Is(err, ErrCanaryAuthoritativeLimit) {
+			return Result{}, ErrCanaryAuthoritativeLimit
+		}
 		return Result{}, ErrCoreExecutionFailed
 	}
 	if err := validateCoreResult(coreResult); err != nil {
@@ -275,6 +283,7 @@ func (a *Adapter) ExecuteStream(
 
 	projection := Projection{
 		AuthoritativeRequestID: coreResult.AuthoritativeRequestID,
+		IdempotencyReference:   CanaryIdempotencyReference(request.IdempotencyKey),
 		LedgerReference:        coreResult.LedgerReference,
 		UserReference:          principal.UserID,
 		KeyReference:           principal.APICredentialID,

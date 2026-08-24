@@ -49,6 +49,7 @@ x-sub2api-slot: &sub2api-slot
     AI16T_CORE_SIGNING_KEY_FILE: /run/ai99t/core_signing_key
     AI16T_FINGERPRINT_KEY_FILE: /run/ai99t/fingerprint_key
     AI16T_PROVIDER_MODE: ${AI16T_PROVIDER_MODE:-mock}
+    AI16T_CANARY_POLICY_ENABLED: ${AI16T_CANARY_POLICY_ENABLED:-false}
     AI16T_MODEL_CONFIG_FILE: /run/ai99t/apiyi_model_config
     AI16T_DURABLE_DRIFT_DIR: /var/lib/ai16t-drift
     AI16T_PUBLIC_MODEL: ai16t-mock
@@ -173,6 +174,9 @@ services:
       AI16T_PROVIDER_BASE_URL: https://api.apiyi.com/v1
       AI16T_PROVIDER_SECRET_REF: ${AI16T_PROVIDER_SECRET_REF:-apiyi/prod-canary}
       AI16T_PROVIDER_TIMEOUT_SECONDS: "20"
+      AI16T_PROVIDER_SPEND_LIMIT_MICRO: ${AI16T_PROVIDER_SPEND_LIMIT_MICRO:-1000000}
+      AI16T_DAILY_SPEND_LIMIT_MICRO: ${AI16T_DAILY_SPEND_LIMIT_MICRO:-1000000}
+      AI16T_REQUEST_RESERVE_MICRO: ${AI16T_REQUEST_RESERVE_MICRO:-250000}
       AI16T_SECRET_SOCKET: /run/ai16t-secret/provider.sock
       AI16T_MODEL_CONFIG_FILE: /run/ai99t/apiyi_model_config
       AI16T_CANARY_USER_REFERENCES: ${AI16T_CANARY_USER_REFERENCES:-}
@@ -187,6 +191,7 @@ services:
     volumes:
       - core_data:/data
       - ../core_bridge.py:/bridge/core_bridge.py:ro
+      - ../canary_budget.py:/bridge/canary_budget.py:ro
       - ../apiyi_provider.py:/bridge/apiyi_provider.py:ro
       - ../secret_provider_client.py:/bridge/secret_provider_client.py:ro
       - ../core_evidence.py:/evidence/core_evidence.py:ro

@@ -14,7 +14,7 @@ import (
 	"github.com/dgraph-io/ristretto"
 )
 
-const apiKeyAuthSnapshotVersion = 20 // v20: group long-context and model pricing fields (force refresh of pre-fix snapshots)
+const apiKeyAuthSnapshotVersion = 21 // v21: Canary creation/validity and single-key admission fields
 
 type apiKeyAuthCacheConfig struct {
 	l1Size        int
@@ -342,6 +342,7 @@ func (s *APIKeyService) snapshotFromAPIKey(ctx context.Context, apiKey *APIKey) 
 		GroupID:     apiKey.GroupID,
 		Name:        apiKey.Name,
 		Status:      apiKey.Status,
+		CreatedAt:   apiKey.CreatedAt,
 		IPWhitelist: apiKey.IPWhitelist,
 		IPBlacklist: apiKey.IPBlacklist,
 		Quota:       apiKey.Quota,
@@ -367,6 +368,13 @@ func (s *APIKeyService) snapshotFromAPIKey(ctx context.Context, apiKey *APIKey) 
 			RPMLimit:                   apiKey.User.RPMLimit,
 		},
 	}
+	if apiKey.Group != nil && apiKey.Group.Name == firstCustomerCanaryGroupName && s.apiKeyRepo != nil {
+		count, err := s.apiKeyRepo.CountByUserID(ctx, apiKey.UserID)
+		if err == nil {
+			snapshot.User.APIKeyCount = count
+			snapshot.User.APIKeyCountResolved = true
+		}
+	}
 
 	// 填充 (user, group) RPM override —— snapshot 构建时查一次 DB，后续请求零 DB 往返。
 	if apiKey.GroupID != nil && *apiKey.GroupID > 0 && s.userGroupRateRepo != nil {
@@ -384,6 +392,7 @@ func (s *APIKeyService) snapshotFromAPIKey(ctx context.Context, apiKey *APIKey) 
 			IsExclusive:                     apiKey.Group.IsExclusive,
 			Status:                          apiKey.Group.Status,
 			SubscriptionType:                apiKey.Group.SubscriptionType,
+			DefaultValidityDays:             apiKey.Group.DefaultValidityDays,
 			RateMultiplier:                  apiKey.Group.RateMultiplier,
 			DailyLimitUSD:                   apiKey.Group.DailyLimitUSD,
 			WeeklyLimitUSD:                  apiKey.Group.WeeklyLimitUSD,
@@ -446,6 +455,7 @@ func (s *APIKeyService) snapshotToAPIKey(key string, snapshot *APIKeyAuthSnapsho
 		Key:         key,
 		Name:        snapshot.Name,
 		Status:      snapshot.Status,
+		CreatedAt:   snapshot.CreatedAt,
 		IPWhitelist: snapshot.IPWhitelist,
 		IPBlacklist: snapshot.IPBlacklist,
 		Quota:       snapshot.Quota,
@@ -470,6 +480,8 @@ func (s *APIKeyService) snapshotToAPIKey(key string, snapshot *APIKeyAuthSnapsho
 			TotalRecharged:             snapshot.User.TotalRecharged,
 			RPMLimit:                   snapshot.User.RPMLimit,
 			UserGroupRPMOverride:       snapshot.User.UserGroupRPMOverride,
+			APIKeyCount:                snapshot.User.APIKeyCount,
+			APIKeyCountResolved:        snapshot.User.APIKeyCountResolved,
 		},
 	}
 	if snapshot.Group != nil {
@@ -481,6 +493,7 @@ func (s *APIKeyService) snapshotToAPIKey(key string, snapshot *APIKeyAuthSnapsho
 			Status:                          snapshot.Group.Status,
 			Hydrated:                        true,
 			SubscriptionType:                snapshot.Group.SubscriptionType,
+			DefaultValidityDays:             snapshot.Group.DefaultValidityDays,
 			RateMultiplier:                  snapshot.Group.RateMultiplier,
 			DailyLimitUSD:                   snapshot.Group.DailyLimitUSD,
 			WeeklyLimitUSD:                  snapshot.Group.WeeklyLimitUSD,

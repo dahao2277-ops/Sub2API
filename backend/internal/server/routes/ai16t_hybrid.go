@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -21,7 +22,12 @@ import (
 	"github.com/redis/go-redis/v9"
 )
 
-const maxAI16TRequestBytes = 1 << 20
+const (
+	maxAI16TRequestBytes = 1 << 20
+	firstCanaryGroupName = "CANARY-CUSTOMER-01"
+)
+
+var firstCanaryModels = []string{"deepseek-chat", "gpt-5.6-luna"}
 
 type ai16tHybridHandler struct {
 	core           *ai16tadapter.HTTPCommercialCore
@@ -31,6 +37,7 @@ type ai16tHybridHandler struct {
 	fingerprintKey []byte
 	isolatedTest   bool
 	emergencyGate  *ai16tadapter.EmergencyDriftGate
+	canaryEnabled  bool
 }
 
 func RegisterAI16THybridRoutes(
@@ -66,6 +73,26 @@ func RegisterAI16THybridRoutes(
 	if err != nil {
 		return fmt.Errorf("configure AI16T model source: %w", err)
 	}
+	canaryEnabled := os.Getenv("AI16T_CANARY_POLICY_ENABLED") == "true"
+	if os.Getenv("AI16T_PROVIDER_MODE") == "apiyi" && !canaryEnabled {
+		return errors.New("AI16T APIYI provider mode requires the Canary safety policy")
+	}
+	if canaryEnabled {
+		if os.Getenv("AI16T_PROVIDER_MODE") != "apiyi" {
+			return errors.New("AI16T Canary policy requires APIYI provider mode")
+		}
+		if err := projections.ConfigureCanaryPolicy(ai16tadapter.CanaryPolicy{
+			RPMLimit:           10,
+			ConcurrencyLimit:   1,
+			DailyLimitMicro:    1_000_000,
+			ProviderLimitMicro: 1_000_000,
+			ReserveMicro:       250_000,
+			LeaseTTL:           5 * time.Minute,
+			Location:           time.FixedZone("Asia/Kuala_Lumpur", 8*60*60),
+		}); err != nil {
+			return fmt.Errorf("configure AI16T Canary policy: %w", err)
+		}
+	}
 	driftGate, err := ai16tadapter.NewDurableDriftGate(
 		projections,
 		os.Getenv("AI16T_DURABLE_DRIFT_DIR"),
@@ -81,17 +108,62 @@ func RegisterAI16THybridRoutes(
 		fingerprintKey: fingerprintKey,
 		isolatedTest:   isolatedTestHooksEnabled(),
 		emergencyGate:  ai16tadapter.NewEmergencyDriftGate(),
+		canaryEnabled:  canaryEnabled,
 	}
 
 	r.GET("/ready", handler.ready)
-	r.GET("/v1/ai16t/models", gin.HandlerFunc(apiKeyAuth), handler.listModels)
-	r.POST("/v1/ai16t/chat/completions", gin.HandlerFunc(apiKeyAuth), handler.executeChat)
-	r.POST("/v1/ai16t/responses", gin.HandlerFunc(apiKeyAuth), handler.executeResponses)
-	r.GET("/v1/ai16t/projection", gin.HandlerFunc(apiKeyAuth), handler.projection)
+	r.GET("/v1/ai16t/models", gin.HandlerFunc(apiKeyAuth), handler.requireCanaryAccess, handler.listModels)
+	r.POST("/v1/ai16t/chat/completions", gin.HandlerFunc(apiKeyAuth), handler.requireCanaryAccess, handler.executeChat)
+	r.POST("/v1/ai16t/responses", gin.HandlerFunc(apiKeyAuth), handler.requireCanaryAccess, handler.executeResponses)
+	r.GET("/v1/ai16t/projection", gin.HandlerFunc(apiKeyAuth), handler.requireCanaryAccess, handler.projection)
 	admin := r.Group("/api/v1/admin/ai16t", gin.HandlerFunc(adminAuth))
 	admin.POST("/reconcile", handler.reconcile)
 	admin.POST("/refund", handler.refund)
 	return nil
+}
+
+func (h *ai16tHybridHandler) requireCanaryAccess(c *gin.Context) {
+	if !h.canaryEnabled {
+		c.Next()
+		return
+	}
+	apiKey, ok := middleware.GetAPIKeyFromContext(c)
+	if !ok || apiKey.User == nil || !validFirstCanaryAPIKey(apiKey, time.Now()) {
+		middleware.AbortWithError(c, http.StatusForbidden, "AI16T_CANARY_ACCESS_REQUIRED", "Canary access requires manual approval")
+		return
+	}
+	c.Next()
+}
+
+func validFirstCanaryAPIKey(apiKey *service.APIKey, now time.Time) bool {
+	if apiKey == nil || apiKey.User == nil || apiKey.Group == nil || !apiKey.Group.Hydrated ||
+		apiKey.Status != service.StatusAPIKeyActive || !apiKey.User.IsActive() || apiKey.User.Concurrency != 1 ||
+		!apiKey.User.APIKeyCountResolved || apiKey.User.APIKeyCount != 1 ||
+		apiKey.Group.Name != firstCanaryGroupName || !apiKey.Group.IsActive() || !apiKey.Group.IsExclusive ||
+		apiKey.Group.Platform != service.PlatformOpenAI || apiKey.Group.DailyLimitUSD == nil ||
+		math.Abs(*apiKey.Group.DailyLimitUSD-1.0) > 0.000001 || apiKey.Group.DefaultValidityDays != 7 ||
+		apiKey.Group.RPMLimit != 10 || !hasExactCanaryModels(apiKey.Group.ModelsListConfig.Models) ||
+		!apiKey.Group.ModelsListConfig.Enabled || !apiKey.User.CanBindGroup(apiKey.Group.ID, true) ||
+		apiKey.CreatedAt.IsZero() || apiKey.ExpiresAt == nil || !apiKey.ExpiresAt.After(now) {
+		return false
+	}
+	return !apiKey.ExpiresAt.After(apiKey.CreatedAt.Add(7*24*time.Hour + 5*time.Minute))
+}
+
+func hasExactCanaryModels(models []string) bool {
+	if len(models) != len(firstCanaryModels) {
+		return false
+	}
+	seen := make(map[string]struct{}, len(models))
+	for _, model := range models {
+		seen[strings.TrimSpace(model)] = struct{}{}
+	}
+	for _, expected := range firstCanaryModels {
+		if _, ok := seen[expected]; !ok {
+			return false
+		}
+	}
+	return len(seen) == len(firstCanaryModels)
 }
 
 func (h *ai16tHybridHandler) ready(c *gin.Context) {
@@ -218,6 +290,26 @@ func (h *ai16tHybridHandler) executeEndpoint(c *gin.Context, endpoint string) {
 		c.GetHeader("X-AI16T-Test-Client-Delay-Ms") != "" {
 		middleware.AbortWithError(c, http.StatusForbidden, "AI16T_TEST_HOOK_DISABLED", "isolated test hooks are disabled")
 		return
+	}
+	if h.canaryEnabled {
+		userReference := strconv.FormatInt(apiKey.User.ID, 10)
+		idempotencyReference := ai16tadapter.CanaryIdempotencyReference(idempotencyKey)
+		lease, err := h.projections.AcquireCanaryLease(
+			requestContext,
+			userReference,
+			idempotencyReference,
+			ai16tadapter.CanaryLeaseToken(idempotencyReference, time.Now()),
+		)
+		if err != nil {
+			status, code := canaryPolicyError(err)
+			middleware.AbortWithError(c, status, code, code)
+			return
+		}
+		defer func() {
+			releaseCtx, cancel := context.WithTimeout(context.WithoutCancel(c.Request.Context()), 2*time.Second)
+			defer cancel()
+			_ = lease.Release(releaseCtx)
+		}()
 	}
 	adapterRequest := ai16tadapter.Request{
 		RawAPIKey:             rawAPIKey,
@@ -389,8 +481,25 @@ func hybridError(err error) (int, string) {
 		return http.StatusUnauthorized, "AI16T_UNAUTHORIZED"
 	case errors.Is(err, ai16tadapter.ErrInvalidRequest), errors.Is(err, ai16tadapter.ErrModelMappingMissing):
 		return http.StatusBadRequest, "AI16T_INVALID_REQUEST"
+	case errors.Is(err, ai16tadapter.ErrCanaryAuthoritativeLimit):
+		return http.StatusTooManyRequests, "AI16T_CANARY_UPSTREAM_LIMIT"
 	default:
 		return http.StatusServiceUnavailable, "AI16T_CORE_UNAVAILABLE"
+	}
+}
+
+func canaryPolicyError(err error) (int, string) {
+	switch {
+	case errors.Is(err, ai16tadapter.ErrCanaryProviderLimit):
+		return http.StatusTooManyRequests, "AI16T_CANARY_UPSTREAM_LIMIT"
+	case errors.Is(err, ai16tadapter.ErrCanaryDailyLimit):
+		return http.StatusTooManyRequests, "AI16T_CANARY_DAILY_LIMIT"
+	case errors.Is(err, ai16tadapter.ErrCanaryRPM):
+		return http.StatusTooManyRequests, "AI16T_CANARY_RPM_LIMIT"
+	case errors.Is(err, ai16tadapter.ErrCanaryConcurrency):
+		return http.StatusTooManyRequests, "AI16T_CANARY_CONCURRENCY_LIMIT"
+	default:
+		return http.StatusServiceUnavailable, "AI16T_CANARY_POLICY_UNAVAILABLE"
 	}
 }
 
@@ -441,6 +550,15 @@ func loadAI16TModelMappings() (map[string]string, error) {
 			return nil, errors.New("AI16T model configuration contains duplicates")
 		}
 		mappings[model] = upstream
+	}
+	if os.Getenv("AI16T_CANARY_POLICY_ENABLED") == "true" {
+		models := make([]string, 0, len(mappings))
+		for model := range mappings {
+			models = append(models, model)
+		}
+		if !hasExactCanaryModels(models) {
+			return nil, errors.New("AI16T Canary model configuration must contain exactly the approved models")
+		}
 	}
 	return mappings, nil
 }

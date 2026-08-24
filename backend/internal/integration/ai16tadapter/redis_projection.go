@@ -21,15 +21,17 @@ func WithProjectionFailure(ctx context.Context) context.Context {
 }
 
 type RedisProjectionStore struct {
-	client *redis.Client
-	prefix string
+	client       *redis.Client
+	prefix       string
+	canaryPolicy *CanaryPolicy
+	now          func() time.Time
 }
 
 func NewRedisProjectionStore(client *redis.Client, prefix string) (*RedisProjectionStore, error) {
 	if client == nil || strings.TrimSpace(prefix) == "" {
 		return nil, ErrInvalidRequest
 	}
-	return &RedisProjectionStore{client: client, prefix: strings.TrimSuffix(prefix, ":")}, nil
+	return &RedisProjectionStore{client: client, prefix: strings.TrimSuffix(prefix, ":"), now: time.Now}, nil
 }
 
 func (s *RedisProjectionStore) Ready(ctx context.Context) error {
@@ -48,6 +50,9 @@ func (s *RedisProjectionStore) Publish(ctx context.Context, projection Projectio
 	if err != nil {
 		return err
 	}
+	if s.canaryPolicy != nil {
+		return s.publishCanaryProjection(ctx, projection, payload)
+	}
 	result, err := s.client.SetNX(
 		ctx,
 		s.userKey(projection.UserReference, "request:"+projection.AuthoritativeRequestID),
@@ -58,7 +63,9 @@ func (s *RedisProjectionStore) Publish(ctx context.Context, projection Projectio
 		return err
 	}
 	if result {
-		return s.client.Set(ctx, s.userKey(projection.UserReference, "latest"), payload, projectionTTL).Err()
+		if err := s.client.Set(ctx, s.userKey(projection.UserReference, "latest"), payload, projectionTTL).Err(); err != nil {
+			return err
+		}
 	}
 	return nil
 }
@@ -95,6 +102,12 @@ func (s *RedisProjectionStore) ReconcileProjection(ctx context.Context, projecti
 	payload, err := json.Marshal(projection)
 	if err != nil {
 		return err
+	}
+	if s.canaryPolicy != nil {
+		if err := s.publishCanaryProjection(ctx, projection, payload); err != nil {
+			return err
+		}
+		return s.client.Del(ctx, s.userKey(projection.UserReference, "drift")).Err()
 	}
 	keys := []string{
 		s.userKey(projection.UserReference, "latest"),

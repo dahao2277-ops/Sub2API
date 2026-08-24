@@ -9,15 +9,16 @@ import (
 )
 
 var (
-	ErrInvalidRequest         = errors.New("ai16t adapter: invalid request")
-	ErrUnauthorized           = errors.New("ai16t adapter: api key unauthorized")
-	ErrUserDisabled           = errors.New("ai16t adapter: user disabled")
-	ErrAPIKeyRevoked          = errors.New("ai16t adapter: api key revoked")
-	ErrModelMappingMissing    = errors.New("ai16t adapter: model mapping missing")
-	ErrInvalidAuthorityResult = errors.New("ai16t adapter: invalid commercial core result")
-	ErrCoreExecutionFailed    = errors.New("ai16t adapter: commercial core execution failed")
-	ErrProjectionDriftActive  = errors.New("ai16t adapter: projection drift blocks financial writes")
-	ErrDriftStateUnavailable  = errors.New("ai16t adapter: projection drift state unavailable")
+	ErrInvalidRequest           = errors.New("ai16t adapter: invalid request")
+	ErrUnauthorized             = errors.New("ai16t adapter: api key unauthorized")
+	ErrUserDisabled             = errors.New("ai16t adapter: user disabled")
+	ErrAPIKeyRevoked            = errors.New("ai16t adapter: api key revoked")
+	ErrModelMappingMissing      = errors.New("ai16t adapter: model mapping missing")
+	ErrInvalidAuthorityResult   = errors.New("ai16t adapter: invalid commercial core result")
+	ErrCoreExecutionFailed      = errors.New("ai16t adapter: commercial core execution failed")
+	ErrCanaryAuthoritativeLimit = errors.New("ai16t adapter: authoritative Canary budget limit reached")
+	ErrProjectionDriftActive    = errors.New("ai16t adapter: projection drift blocks financial writes")
+	ErrDriftStateUnavailable    = errors.New("ai16t adapter: projection drift state unavailable")
 )
 
 // Request contains only request-scoped data. RawAPIKey is used to create a
@@ -98,19 +99,23 @@ type CoreStreamChunk struct {
 // Projection implementations must deduplicate on AuthoritativeRequestID.
 type Projection struct {
 	AuthoritativeRequestID string
-	LedgerReference        string
-	UserReference          string
-	KeyReference           string
-	Model                  string
-	Status                 OutcomeStatus
-	InputTokens            int64
-	OutputTokens           int64
-	CustomerChargeMicro    int64
-	ProviderCostMicro      int64
-	BalanceAfterMicro      int64
-	RefundMicro            int64
-	NetRevenueMicro        int64
-	Replay                 bool
+	// IdempotencyReference is a one-way digest of the client idempotency key.
+	// It lets the Canary gate recognize a settled replay without persisting the
+	// caller-provided value in Redis or exposing it to the control plane.
+	IdempotencyReference string
+	LedgerReference      string
+	UserReference        string
+	KeyReference         string
+	Model                string
+	Status               OutcomeStatus
+	InputTokens          int64
+	OutputTokens         int64
+	CustomerChargeMicro  int64
+	ProviderCostMicro    int64
+	BalanceAfterMicro    int64
+	RefundMicro          int64
+	NetRevenueMicro      int64
+	Replay               bool
 }
 
 type Result struct {

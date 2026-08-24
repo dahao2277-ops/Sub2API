@@ -10,6 +10,7 @@ type APIKeyAuthSnapshot struct {
 	GroupID     *int64                   `json:"group_id,omitempty"`
 	Name        string                   `json:"name"`
 	Status      string                   `json:"status"`
+	CreatedAt   time.Time                `json:"created_at"`
 	IPWhitelist []string                 `json:"ip_whitelist,omitempty"`
 	IPBlacklist []string                 `json:"ip_blacklist,omitempty"`
 	User        APIKeyAuthUserSnapshot   `json:"user"`
@@ -52,6 +53,12 @@ type APIKeyAuthUserSnapshot struct {
 	// UserGroupRPMOverride 该 API Key 对应的 (user, group) 专属 RPM 覆盖值。
 	// nil = 无 override（回退到 group/user 级）；0 = 不限流；>0 = 专属上限。
 	UserGroupRPMOverride *int `json:"user_group_rpm_override,omitempty"`
+
+	// APIKeyCount is resolved only for the first-customer Canary group. The
+	// route gate fails closed unless the count was read successfully and equals
+	// one, preventing a second credential from entering the Canary surface.
+	APIKeyCount         int64 `json:"api_key_count"`
+	APIKeyCountResolved bool  `json:"api_key_count_resolved"`
 }
 
 // APIKeyAuthGroupSnapshot 分组快照
@@ -62,6 +69,7 @@ type APIKeyAuthGroupSnapshot struct {
 	IsExclusive                     bool                          `json:"is_exclusive"`
 	Status                          string                        `json:"status"`
 	SubscriptionType                string                        `json:"subscription_type"`
+	DefaultValidityDays             int                           `json:"default_validity_days"`
 	RateMultiplier                  float64                       `json:"rate_multiplier"`
 	DailyLimitUSD                   *float64                      `json:"daily_limit_usd,omitempty"`
 	WeeklyLimitUSD                  *float64                      `json:"weekly_limit_usd,omitempty"`

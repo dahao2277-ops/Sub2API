@@ -113,6 +113,27 @@ func TestHTTPCommercialCoreStreamsCompleteFramesAndRequiresSettlement(t *testing
 	}, chunks)
 }
 
+func TestHTTPCommercialCoreMapsAuthoritativeCanaryLimitBeforeStreaming(t *testing.T) {
+	key := []byte(strings.Repeat("b", 32))
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusTooManyRequests)
+		_, _ = io.WriteString(w, `{"error":"CANARY_BUDGET_LIMIT"}`)
+	}))
+	defer server.Close()
+
+	client, err := NewHTTPCommercialCore(server.URL, key, server.Client())
+	require.NoError(t, err)
+	_, err = client.Execute(context.Background(), CoreRequest{IdempotencyKey: "blocked"})
+	require.ErrorIs(t, err, ErrCanaryAuthoritativeLimit)
+	_, err = client.ExecuteStream(
+		context.Background(),
+		CoreRequest{IdempotencyKey: "blocked-stream"},
+		func(CoreStreamChunk) error { return nil },
+	)
+	require.ErrorIs(t, err, ErrCanaryAuthoritativeLimit)
+}
+
 func TestKeyedFingerprintAndStaticIdentityFailClosed(t *testing.T) {
 	key := []byte(strings.Repeat("f", 32))
 	fingerprint, err := KeyedFingerprint("sk-test", key)

@@ -31,6 +31,7 @@ var (
 	ErrAPIKeyInvalidChars   = infraerrors.BadRequest("API_KEY_INVALID_CHARS", "api key can only contain letters, numbers, underscores, and hyphens")
 	ErrAPIKeyRateLimited    = infraerrors.TooManyRequests("API_KEY_RATE_LIMITED", "too many failed attempts, please try again later")
 	ErrAPIKeyAuthOverloaded = infraerrors.ServiceUnavailable("API_KEY_AUTH_OVERLOADED", "api key authentication is temporarily overloaded")
+	ErrCanaryAPIKeyLimit    = infraerrors.Conflict("CANARY_API_KEY_LIMIT", "Canary user may have exactly one api key")
 	ErrInvalidIPPattern     = infraerrors.BadRequest("INVALID_IP_PATTERN", "invalid IP or CIDR pattern")
 	// ErrAPIKeyExpired        = infraerrors.Forbidden("API_KEY_EXPIRED", "api key has expired")
 	ErrAPIKeyExpired = infraerrors.Forbidden("API_KEY_EXPIRED", "api key 已过期")
@@ -50,6 +51,7 @@ const (
 	apiKeyMaxErrorsPerHour       = 20
 	apiKeyLastUsedMinTouch       = 30 * time.Second
 	apiKeySortCurrentConcurrency = "current_concurrency"
+	firstCustomerCanaryGroupName = "CANARY-CUSTOMER-01"
 	// DB 写失败后的短退避，避免请求路径持续同步重试造成写风暴与高延迟。
 	apiKeyLastUsedFailBackoff = 5 * time.Second
 )
@@ -493,6 +495,15 @@ func (s *APIKeyService) Create(ctx context.Context, userID int64, req CreateAPIK
 		if !s.canUserBindGroup(ctx, user, group) {
 			return nil, ErrGroupNotAllowed
 		}
+		if group.Name == firstCustomerCanaryGroupName {
+			count, err := s.apiKeyRepo.CountByUserID(ctx, userID)
+			if err != nil {
+				return nil, fmt.Errorf("count Canary api keys: %w", err)
+			}
+			if count != 0 {
+				return nil, ErrCanaryAPIKeyLimit
+			}
+		}
 	}
 
 	var key string
@@ -556,7 +567,11 @@ func (s *APIKeyService) Create(ctx context.Context, userID int64, req CreateAPIK
 		return nil, fmt.Errorf("create api key: %w", err)
 	}
 
+	// A new key changes the user's credential count. Invalidate every auth
+	// snapshot for that user so count-based admission gates cannot retain a
+	// stale single-key view.
 	s.InvalidateAuthCacheByKey(ctx, apiKey.Key)
+	s.InvalidateAuthCacheByUserID(ctx, userID)
 	s.compileAPIKeyIPRules(apiKey)
 
 	return apiKey, nil
@@ -935,6 +950,9 @@ func (s *APIKeyService) Delete(ctx context.Context, id int64, userID int64) erro
 		_ = s.cache.DeleteCreateAttemptCount(ctx, userID)
 	}
 	s.InvalidateAuthCacheByKey(ctx, key)
+	// Deletion also changes the user's credential count; clear remaining key
+	// snapshots so Canary admission can recover from a fail-closed multi-key state.
+	s.InvalidateAuthCacheByUserID(ctx, userID)
 	s.lastUsedTouchL1.Delete(id)
 
 	return nil

@@ -12,12 +12,22 @@ import time
 import urllib.error
 import urllib.request
 from collections.abc import Iterator
+from contextlib import nullcontext
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
 from urllib.parse import parse_qs, urlsplit
 
 from apiyi_provider import APIYIProvider, decode_raw_response
+from canary_budget import (
+    CanaryBudgetExceeded,
+    MAX_CANARY_INPUT_TOKENS,
+    MAX_CANARY_OUTPUT_TOKENS,
+    ProviderSpendGate,
+    StreamBudgetSession,
+    enforce_canary_input_ceiling,
+    maximum_request_provider_cost_micro,
+)
 from secret_provider_client import UnixSecretResolver
 from token_platform.config import Settings
 from token_platform.hybrid_control_plane import FileReferenceResolver
@@ -26,6 +36,7 @@ from token_platform.platform import TokenPlatform
 
 MAX_BODY = 2 * 1024 * 1024
 SIGNATURE_SKEW_SECONDS = 30
+FIRST_CANARY_MODELS = frozenset({"deepseek-chat", "gpt-5.6-luna"})
 
 
 def _read_mode_0600(path: str) -> bytes:
@@ -134,6 +145,7 @@ class HybridAuthority:
         self.provider_mode = os.getenv("AI16T_PROVIDER_MODE", "mock")
         self.secret_resolver: UnixSecretResolver | None = None
         self.secret_reference = ""
+        self.provider_spend_gate: ProviderSpendGate | None = None
         self.allowed_users = frozenset(
             value.strip()
             for value in os.getenv("AI16T_CANARY_USER_REFERENCES", "").split(",")
@@ -166,6 +178,12 @@ class HybridAuthority:
             self.allowed_models = self._configure_apiyi_catalog(
                 os.environ["AI16T_MODEL_CONFIG_FILE"]
             )
+            self.provider_spend_gate = ProviderSpendGate(
+                self.platform.database,
+                limit_micro=int(os.environ["AI16T_PROVIDER_SPEND_LIMIT_MICRO"]),
+                daily_limit_micro=int(os.environ["AI16T_DAILY_SPEND_LIMIT_MICRO"]),
+                reserve_micro=int(os.environ["AI16T_REQUEST_RESERVE_MICRO"]),
+            )
         else:
             raise RuntimeError("unsupported AI16T provider mode")
         self.platform.provider = external_provider
@@ -183,8 +201,8 @@ class HybridAuthority:
         except json.JSONDecodeError as error:
             raise RuntimeError("APIYI model configuration is invalid") from error
         models = config.get("models") if isinstance(config, dict) else None
-        if not isinstance(models, list) or not 1 <= len(models) <= 6:
-            raise RuntimeError("APIYI model configuration must contain one to six models")
+        if not isinstance(models, list) or len(models) != len(FIRST_CANARY_MODELS):
+            raise RuntimeError("APIYI Canary must contain exactly two approved models")
         allowed: set[str] = set()
         configured: list[dict[str, Any]] = []
         for item in models:
@@ -210,8 +228,15 @@ class HybridAuthority:
                 or values[5] < values[2]
             ):
                 raise RuntimeError("APIYI model configuration violates pricing safety")
+            if maximum_request_provider_cost_micro(*values[:3]) >= 250_000:
+                raise RuntimeError(
+                    "APIYI model maximum provider request cost must stay below reserve"
+                )
             allowed.add(model)
             configured.append({"model": model, "rates": values})
+
+        if allowed != FIRST_CANARY_MODELS:
+            raise RuntimeError("APIYI Canary contains an unapproved model")
 
         with self.platform.database.transaction() as connection:
             placeholders = ",".join("?" for _ in allowed)
@@ -465,41 +490,47 @@ class HybridAuthority:
             request_payload,
             failure_plan,
             authoritative_request_id,
-            replay,
             prompt,
             max_output,
         ) = self._prepare_execution(payload)
-        if request_payload.get("stream", False):
-            chunks = list(
-                self.platform.process_stream_request(
-                    user_id=user_id,
-                    api_key_id=api_key_id,
-                    provider=self.ledger_provider,
-                    model=model,
-                    prompt=prompt,
-                    request_id=authoritative_request_id,
-                    idempotency_key=idempotency_key,
-                    failure_plan=failure_plan,
-                    max_input_tokens=4096,
-                    max_output_tokens=max_output,
-                )
-            )
-            settlement = self.platform._existing_settlement(authoritative_request_id)
-            response = "".join(chunk.content for chunk in chunks).encode()
-            return self._result(settlement, replay, response, "text/event-stream")
-        settlement = self.platform.process_request(
-            user_id=user_id,
-            api_key_id=api_key_id,
-            provider=self.ledger_provider,
-            model=model,
-            prompt=prompt,
-            request_id=authoritative_request_id,
-            idempotency_key=idempotency_key,
-            failure_plan=failure_plan,
-            max_input_tokens=4096,
-            max_output_tokens=max_output,
+        gate = (
+            self.provider_spend_gate.admit(authoritative_request_id, user_id)
+            if self.provider_spend_gate is not None
+            else nullcontext()
         )
-        return self._result(settlement, replay)
+        with gate:
+            replay = self._request_replay(authoritative_request_id)
+            if request_payload.get("stream", False):
+                chunks = list(
+                    self.platform.process_stream_request(
+                        user_id=user_id,
+                        api_key_id=api_key_id,
+                        provider=self.ledger_provider,
+                        model=model,
+                        prompt=prompt,
+                        request_id=authoritative_request_id,
+                        idempotency_key=idempotency_key,
+                        failure_plan=failure_plan,
+                        max_input_tokens=MAX_CANARY_INPUT_TOKENS,
+                        max_output_tokens=max_output,
+                    )
+                )
+                settlement = self.platform._existing_settlement(authoritative_request_id)
+                response = "".join(chunk.content for chunk in chunks).encode()
+                return self._result(settlement, replay, response, "text/event-stream")
+            settlement = self.platform.process_request(
+                user_id=user_id,
+                api_key_id=api_key_id,
+                provider=self.ledger_provider,
+                model=model,
+                prompt=prompt,
+                request_id=authoritative_request_id,
+                idempotency_key=idempotency_key,
+                failure_plan=failure_plan,
+                max_input_tokens=MAX_CANARY_INPUT_TOKENS,
+                max_output_tokens=max_output,
+            )
+            return self._result(settlement, replay)
 
     def _prepare_execution(self, payload: dict[str, Any]) -> tuple[Any, ...]:
         user_id, api_key_id = self._identity(
@@ -522,13 +553,16 @@ class HybridAuthority:
         authoritative_request_id = "sub2_" + hashlib.sha256(
             f"{user_id}\0{idempotency_key}".encode()
         ).hexdigest()[:40]
-        replay = self._request_replay(authoritative_request_id)
         prompt = json.dumps(request_payload, separators=(",", ":"), ensure_ascii=False)
+        enforce_canary_input_ceiling(prompt)
         max_output = request_payload.get(
             "max_output_tokens",
             request_payload.get("max_completion_tokens", request_payload.get("max_tokens", 256)),
         )
-        if not isinstance(max_output, int) or not 1 <= max_output <= 4096:
+        if (
+            not isinstance(max_output, int)
+            or not 1 <= max_output <= MAX_CANARY_OUTPUT_TOKENS
+        ):
             raise ValueError("max output tokens are invalid")
         return (
             user_id,
@@ -538,18 +572,26 @@ class HybridAuthority:
             request_payload,
             failure_plan,
             authoritative_request_id,
-            replay,
             prompt,
             max_output,
         )
 
-    def execute_stream(self, payload: dict[str, Any]) -> Iterator[tuple[str, Any]]:
+    def execute_stream(self, payload: dict[str, Any]) -> StreamBudgetSession:
         prepared = self._prepare_execution(payload)
         if not prepared[4].get("stream", False):
             raise ValueError("stream endpoint requires stream=true")
-        return self._execute_stream(prepared)
+        # Admission is intentionally eager: a budget rejection must happen
+        # before Handler._stream sends the SSE 200 response headers.
+        gate = (
+            self.provider_spend_gate.admit(prepared[6], prepared[0])
+            if self.provider_spend_gate is not None
+            else nullcontext()
+        )
+        return StreamBudgetSession(self._execute_stream(prepared, gate), gate)
 
-    def _execute_stream(self, prepared: tuple[Any, ...]) -> Iterator[tuple[str, Any]]:
+    def _execute_stream(
+        self, prepared: tuple[Any, ...], gate: Any
+    ) -> Iterator[tuple[str, Any]]:
         (
             user_id,
             api_key_id,
@@ -558,32 +600,33 @@ class HybridAuthority:
             _request_payload,
             failure_plan,
             authoritative_request_id,
-            replay,
             prompt,
             max_output,
         ) = prepared
-        iterator = self.platform.process_stream_request(
-            user_id=user_id,
-            api_key_id=api_key_id,
-            provider=self.ledger_provider,
-            model=model,
-            prompt=prompt,
-            request_id=authoritative_request_id,
-            idempotency_key=idempotency_key,
-            failure_plan=failure_plan,
-            max_input_tokens=4096,
-            max_output_tokens=max_output,
-        )
-        try:
-            for chunk in iterator:
-                yield (
-                    "terminal" if chunk.finish_reason else "chunk",
-                    chunk.content.encode("utf-8"),
-                )
-        finally:
-            iterator.close()
-        settlement = self.platform._existing_settlement(authoritative_request_id)
-        yield "settlement", self._result(settlement, replay, include_response=False)
+        with gate:
+            replay = self._request_replay(authoritative_request_id)
+            iterator = self.platform.process_stream_request(
+                user_id=user_id,
+                api_key_id=api_key_id,
+                provider=self.ledger_provider,
+                model=model,
+                prompt=prompt,
+                request_id=authoritative_request_id,
+                idempotency_key=idempotency_key,
+                failure_plan=failure_plan,
+                max_input_tokens=MAX_CANARY_INPUT_TOKENS,
+                max_output_tokens=max_output,
+            )
+            try:
+                for chunk in iterator:
+                    yield (
+                        "terminal" if chunk.finish_reason else "chunk",
+                        chunk.content.encode("utf-8"),
+                    )
+            finally:
+                iterator.close()
+            settlement = self.platform._existing_settlement(authoritative_request_id)
+            yield "settlement", self._result(settlement, replay, include_response=False)
 
     def _result(
         self,
@@ -681,6 +724,9 @@ class HybridAuthority:
         refunded_micro = int(refund_row["value"]) if refund_row else 0
         return {
             "AuthoritativeRequestID": str(request["request_id"]),
+            "IdempotencyReference": hashlib.sha256(
+                str(request["idempotency_key"]).encode()
+            ).hexdigest(),
             "LedgerReference": str(ledger["transaction_id"]),
             "UserReference": external_user,
             "KeyReference": "ledger-projection",
@@ -753,36 +799,39 @@ class Handler(BaseHTTPRequestHandler):
         self.wfile.write(b"\r\n")
         self.wfile.flush()
 
-    def _stream(self, iterator: Iterator[tuple[str, Any]]) -> None:
-        self.send_response(200)
-        self.send_header("Content-Type", "text/event-stream")
-        self.send_header("Cache-Control", "no-cache, no-store, no-transform")
-        self.send_header("X-Accel-Buffering", "no")
-        self.send_header("Transfer-Encoding", "chunked")
-        self.send_header("Connection", "close")
-        self.end_headers()
-        try:
-            for event, value in iterator:
-                if event in ("chunk", "terminal"):
-                    data = json.dumps(
-                        {"frame": base64.b64encode(value).decode("ascii")},
-                        separators=(",", ":"),
-                    )
-                else:
-                    data = json.dumps(value, separators=(",", ":"))
-                encoded = f"event: {event}\ndata: {data}\n\n".encode("utf-8")
-                self._write_stream_chunk(encoded)
-            self.wfile.write(b"0\r\n\r\n")
-            self.wfile.flush()
-        except (BrokenPipeError, ConnectionResetError):
-            iterator.close()
-        except Exception:
-            # Headers may already be committed.  Closing is safer than writing a
-            # second JSON response into an SSE body; the Ledger recovery state is
-            # finalized by the Commercial Core iterator.
-            iterator.close()
-        finally:
-            self.close_connection = True
+    def _stream(self, iterator: StreamBudgetSession) -> None:
+        # The session owns the eager budget reservation before headers. Keeping
+        # header writes inside its context guarantees a pre-dispatch disconnect
+        # cancels only this owner-token reservation and cannot lock the Canary.
+        with iterator:
+            try:
+                self.send_response(200)
+                self.send_header("Content-Type", "text/event-stream")
+                self.send_header("Cache-Control", "no-cache, no-store, no-transform")
+                self.send_header("X-Accel-Buffering", "no")
+                self.send_header("Transfer-Encoding", "chunked")
+                self.send_header("Connection", "close")
+                self.end_headers()
+                for event, value in iterator:
+                    if event in ("chunk", "terminal"):
+                        data = json.dumps(
+                            {"frame": base64.b64encode(value).decode("ascii")},
+                            separators=(",", ":"),
+                        )
+                    else:
+                        data = json.dumps(value, separators=(",", ":"))
+                    encoded = f"event: {event}\ndata: {data}\n\n".encode("utf-8")
+                    self._write_stream_chunk(encoded)
+                self.wfile.write(b"0\r\n\r\n")
+                self.wfile.flush()
+            except (BrokenPipeError, ConnectionResetError, OSError):
+                pass
+            except Exception:
+                # Headers may already be committed. Closing is safer than a
+                # second JSON response; Ledger recovery remains fail-closed.
+                pass
+            finally:
+                self.close_connection = True
 
     def _dispatch(self) -> None:
         try:
@@ -815,6 +864,8 @@ class Handler(BaseHTTPRequestHandler):
             self._write(404, {"error": "not found"})
         except (ValueError, KeyError, TypeError, json.JSONDecodeError) as error:
             self._write(400, {"error": type(error).__name__})
+        except CanaryBudgetExceeded:
+            self._write(429, {"error": "CANARY_BUDGET_LIMIT"})
         except PermissionError as error:
             self._write(403, {"error": type(error).__name__})
         except BaseException as error:

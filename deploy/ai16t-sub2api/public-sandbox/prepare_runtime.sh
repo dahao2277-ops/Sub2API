@@ -57,7 +57,11 @@ fi
 chmod 0600 "$secret_root/master_key"
 
 if [ ! -f "$runtime/apiyi_model_config_core.json" ]; then
-  printf '%s\n' '{"models":[{"model":"gpt-4o-mini","upstream_model":"gpt-4o-mini","input_per_million_micro":10000000,"output_per_million_micro":10000000,"cached_per_million_micro":5000000,"customer_input_per_million_micro":15000000,"customer_output_per_million_micro":15000000,"customer_cached_per_million_micro":7500000}]}' > "$runtime/apiyi_model_config_core.json"
+  if [ "$provider_mode" = "apiyi" ]; then
+    printf '%s\n' '{"models":[{"model":"deepseek-chat","upstream_model":"deepseek-chat","input_per_million_micro":250000,"output_per_million_micro":1000000,"cached_per_million_micro":62500,"customer_input_per_million_micro":312500,"customer_output_per_million_micro":1250000,"customer_cached_per_million_micro":78125},{"model":"gpt-5.6-luna","upstream_model":"gpt-5.6-luna","input_per_million_micro":200000,"output_per_million_micro":1200000,"cached_per_million_micro":20000,"customer_input_per_million_micro":250000,"customer_output_per_million_micro":1500000,"customer_cached_per_million_micro":25000}]}' > "$runtime/apiyi_model_config_core.json"
+  else
+    printf '%s\n' '{"models":[{"model":"gpt-4o-mini","upstream_model":"gpt-4o-mini","input_per_million_micro":10000000,"output_per_million_micro":10000000,"cached_per_million_micro":5000000,"customer_input_per_million_micro":15000000,"customer_output_per_million_micro":15000000,"customer_cached_per_million_micro":7500000}]}' > "$runtime/apiyi_model_config_core.json"
+  fi
 fi
 cp "$runtime/apiyi_model_config_core.json" "$runtime/apiyi_model_config_sub2api.json"
 chmod 0600 "$runtime/apiyi_model_config_core.json" "$runtime/apiyi_model_config_sub2api.json"
@@ -107,10 +111,12 @@ case "$provider_mode" in
   mock)
     core_runtime_mode="isolated-test"
     core_test_mode="mock-only-enabled"
+    canary_policy_enabled="false"
     ;;
   apiyi)
     core_runtime_mode="normal"
     core_test_mode="disabled"
+    canary_policy_enabled="true"
     ;;
   *) echo "Unsupported AI16T provider mode" >&2; exit 1 ;;
 esac
@@ -125,14 +131,23 @@ esac
   echo "AI16T_CORE_RELEASE_TREE=$core_release_tree"
   echo "AI16T_CORE_IMAGE_TAG=$core_image_tag"
   echo "AI16T_PROVIDER_MODE=$provider_mode"
+  echo "AI16T_CANARY_POLICY_ENABLED=$canary_policy_enabled"
   echo "AI16T_CORE_RUNTIME_MODE=$core_runtime_mode"
   echo "AI16T_CORE_TEST_MODE=$core_test_mode"
   echo "AI16T_PROVIDER_SECRET_REF=${AI16T_PROVIDER_SECRET_REF:-apiyi/prod-canary}"
   echo "AI16T_CANARY_USER_REFERENCES=${AI16T_CANARY_USER_REFERENCES:-}"
-  echo "AI16T_INITIAL_CREDIT_MICRO=${AI16T_INITIAL_CREDIT_MICRO:-200000}"
+  echo "AI16T_PROVIDER_SPEND_LIMIT_MICRO=1000000"
+  echo "AI16T_DAILY_SPEND_LIMIT_MICRO=1000000"
+  echo "AI16T_REQUEST_RESERVE_MICRO=250000"
+  if [ "$provider_mode" = "apiyi" ]; then
+    echo "AI16T_INITIAL_CREDIT_MICRO=${AI16T_INITIAL_CREDIT_MICRO:-3000000}"
+  else
+    echo "AI16T_INITIAL_CREDIT_MICRO=${AI16T_INITIAL_CREDIT_MICRO:-200000}"
+  fi
   echo "AI99T_SECRET_DATA_DIR=$secret_root/data"
   echo "AI99T_SECRET_RUN_DIR=$secret_root/run"
   echo "AI99T_SECRET_MASTER_KEY_FILE=$secret_root/master_key"
+  echo "AI99T_APIYI_KEY_B_FINGERPRINT_FILE=$secret_root/key-b.fingerprint"
   echo "AI99T_DRIFT_DATA_DIR=$drift_root"
   echo "AI99T_MODEL_CONFIG_CORE_FILE=$runtime/apiyi_model_config_core.json"
   echo "AI99T_MODEL_CONFIG_SUB2API_FILE=$runtime/apiyi_model_config_sub2api.json"

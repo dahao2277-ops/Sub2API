@@ -19,6 +19,7 @@ import (
 
 type authRepoStub struct {
 	getByKeyForAuth   func(ctx context.Context, key string) (*APIKey, error)
+	countByUserID     func(ctx context.Context, userID int64) (int64, error)
 	listKeysByUserID  func(ctx context.Context, userID int64) ([]string, error)
 	listKeysByGroupID func(ctx context.Context, groupID int64) ([]string, error)
 }
@@ -67,6 +68,9 @@ func (s *authRepoStub) VerifyOwnership(ctx context.Context, userID int64, apiKey
 }
 
 func (s *authRepoStub) CountByUserID(ctx context.Context, userID int64) (int64, error) {
+	if s.countByUserID != nil {
+		return s.countByUserID(ctx, userID)
+	}
 	panic("unexpected CountByUserID call")
 }
 
@@ -276,6 +280,68 @@ func TestAPIKeyService_SnapshotRoundTrip_PreservesMessagesDispatchModelConfig(t 
 	require.Equal(t, apiKey.Name, roundTrip.Name)
 	require.NotNil(t, roundTrip.Group)
 	require.Equal(t, apiKey.Group.MessagesDispatchModelConfig, roundTrip.Group.MessagesDispatchModelConfig)
+}
+
+func TestAPIKeyService_SnapshotRoundTrip_PreservesCanaryAdmissionFields(t *testing.T) {
+	repo := &authRepoStub{
+		countByUserID: func(_ context.Context, userID int64) (int64, error) {
+			require.Equal(t, int64(2), userID)
+			return 1, nil
+		},
+	}
+	svc := NewAPIKeyService(repo, nil, nil, nil, nil, nil, &config.Config{})
+	groupID := int64(9)
+	created := time.Date(2026, time.August, 24, 12, 0, 0, 0, time.UTC)
+	expires := created.Add(7 * 24 * time.Hour)
+	apiKey := &APIKey{
+		ID:        1,
+		UserID:    2,
+		GroupID:   &groupID,
+		Key:       "k-canary-roundtrip",
+		Status:    StatusActive,
+		CreatedAt: created,
+		ExpiresAt: &expires,
+		User: &User{
+			ID:          2,
+			Status:      StatusActive,
+			Role:        RoleUser,
+			Concurrency: 1,
+		},
+		Group: &Group{
+			ID:                  groupID,
+			Name:                "CANARY-CUSTOMER-01",
+			Platform:            PlatformOpenAI,
+			Status:              StatusActive,
+			DefaultValidityDays: 7,
+		},
+	}
+
+	snapshot := svc.snapshotFromAPIKey(context.Background(), apiKey)
+	roundTrip := svc.snapshotToAPIKey(apiKey.Key, snapshot)
+
+	require.Equal(t, created, roundTrip.CreatedAt)
+	require.Equal(t, expires, *roundTrip.ExpiresAt)
+	require.Equal(t, 7, roundTrip.Group.DefaultValidityDays)
+	require.True(t, roundTrip.User.APIKeyCountResolved)
+	require.Equal(t, int64(1), roundTrip.User.APIKeyCount)
+}
+
+func TestAPIKeyService_CanarySnapshotFailsClosedWhenKeyCountCannotResolve(t *testing.T) {
+	repo := &authRepoStub{
+		countByUserID: func(context.Context, int64) (int64, error) {
+			return 0, errors.New("database unavailable")
+		},
+	}
+	svc := NewAPIKeyService(repo, nil, nil, nil, nil, nil, &config.Config{})
+	apiKey := &APIKey{
+		UserID: 2,
+		User:   &User{ID: 2, Status: StatusActive},
+		Group:  &Group{Name: "CANARY-CUSTOMER-01"},
+	}
+
+	snapshot := svc.snapshotFromAPIKey(context.Background(), apiKey)
+	require.False(t, snapshot.User.APIKeyCountResolved)
+	require.Zero(t, snapshot.User.APIKeyCount)
 }
 
 func TestAPIKeyService_SnapshotRoundTrip_PreservesReasoningEffortPolicy(t *testing.T) {
