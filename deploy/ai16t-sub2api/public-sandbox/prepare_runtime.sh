@@ -78,6 +78,16 @@ release_tag="$(printf '%s' "$release_commit" | cut -c1-12)"
 } > "$runtime/public.env"
 
 unset database_password redis_password admin_password jwt_secret totp_key
-chmod 0600 "$runtime"/*
+chmod 0600 \
+  "$runtime/core_signing_key" \
+  "$runtime/fingerprint_key" \
+  "$runtime/mock_provider_key" \
+  "$runtime/database_password" \
+  "$runtime/redis_password" \
+  "$runtime/jwt_secret" \
+  "$runtime/totp_encryption_key" \
+  "$runtime/admin_password" \
+  "$runtime/sub2api.env" \
+  "$runtime/public.env"
 chmod 0700 "$runtime" "$runtime/backups"
 echo "PUBLIC_SANDBOX_RUNTIME_READY"
