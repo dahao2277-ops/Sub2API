@@ -197,6 +197,9 @@ services:
       - ${AI99T_SECRET_RUN_DIR:?AI99T_SECRET_RUN_DIR is required}:/run/ai16t-secret
     networks:
       - platform_b_private
+      # Commercial Core is the sole production component allowed to call the
+      # exact allowlisted APIYI HTTPS origin. No host port is published.
+      - platform_b_edge
     healthcheck:
       test:
         - CMD
