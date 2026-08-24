@@ -10,7 +10,7 @@ env_file="$root/.runtime/public.env"
 docker compose --env-file "$env_file" -f "$compose" exec -T postgres \
   psql -X -v ON_ERROR_STOP=1 -U ai99t_sub2api -d ai99t_sub2api <<'SQL'
 INSERT INTO settings(key,value) VALUES
-  ('registration_enabled','false'),
+  ('registration_enabled','true'),
   ('email_verify_enabled','false'),
   ('promo_code_enabled','false'),
   ('password_reset_enabled','false'),

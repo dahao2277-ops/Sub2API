@@ -9,7 +9,7 @@ It is not a live-provider or live-payment production environment.
 - Public edge: Caddy on ports 80/443; Blue and Green are also reachable only from host loopback on 18181/18182.
 - PostgreSQL, Redis, Commercial Core, and Mock Provider have no host ports and use an internal Docker network.
 - Sub2API isolated-test request hooks are disabled. Commercial Core remains mock-only internally so test credit can never become real money.
-- Registration, password reset, promotions, invitation/affiliate sales, and subscription purchase are disabled after bootstrap.
+- Public email/password registration is enabled after bootstrap. Email verification, password reset, promotions, invitation/affiliate sales, and subscription purchase remain disabled.
 - No Platform A database, Redis, volume, secret, domain, container, or release is referenced.
 - No real provider secret and no payment credential is accepted by this deployment package.
 
