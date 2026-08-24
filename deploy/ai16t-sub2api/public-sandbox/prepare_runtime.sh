@@ -89,5 +89,13 @@ chmod 0600 \
   "$runtime/admin_password" \
   "$runtime/sub2api.env" \
   "$runtime/public.env"
+# These three files are bind-mounted into non-root containers.  The parent
+# directory remains root-owned mode 0700, and each mount is read-only, so host
+# users cannot traverse to the files while the intended container UIDs can
+# read them.  Password, JWT, TOTP, and generated admin secrets stay mode 0600.
+chmod 0644 \
+  "$runtime/core_signing_key" \
+  "$runtime/fingerprint_key" \
+  "$runtime/mock_provider_key"
 chmod 0700 "$runtime" "$runtime/backups"
 echo "PUBLIC_SANDBOX_RUNTIME_READY"
