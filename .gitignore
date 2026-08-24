@@ -146,6 +146,8 @@ output/
 deploy/ai16t-sub2api/.runtime/
 deploy/ai16t-sub2api/staging/.runtime/
 deploy/ai16t-sub2api/staging/__pycache__/
+deploy/ai16t-sub2api/public-sandbox/.runtime/
+deploy/ai16t-sub2api/public-sandbox/__pycache__/
 
 # Vitest / Vite cache at repo root
 .vite/

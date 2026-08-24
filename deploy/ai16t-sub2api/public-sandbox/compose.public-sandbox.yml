@@ -1,0 +1,300 @@
+name: ai99t-platform-b-public-sandbox
+
+x-sub2api-slot: &sub2api-slot
+  build:
+    context: ../../..
+    dockerfile: Dockerfile
+    args:
+      VERSION: ai99t-public-sandbox
+      COMMIT: ${SUB2API_RELEASE_COMMIT:?SUB2API_RELEASE_COMMIT is required}
+  image: ai99t/sub2api:${SUB2API_IMAGE_TAG:?SUB2API_IMAGE_TAG is required}
+  restart: unless-stopped
+  init: true
+  security_opt:
+    - no-new-privileges:true
+  env_file:
+    - .runtime/sub2api.env
+  environment: &sub2api-environment
+    AUTO_SETUP: "true"
+    SERVER_HOST: 0.0.0.0
+    SERVER_PORT: "8080"
+    SERVER_MODE: release
+    SERVER_FRONTEND_URL: https://${AI99T_DOMAIN:?AI99T_DOMAIN is required}
+    SERVER_TRUSTED_PROXIES: 172.31.99.0/24
+    DATABASE_HOST: postgres
+    DATABASE_PORT: "5432"
+    DATABASE_USER: ai99t_sub2api
+    DATABASE_DBNAME: ai99t_sub2api
+    DATABASE_SSLMODE: disable
+    REDIS_HOST: redis
+    REDIS_PORT: "6379"
+    REDIS_DB: "0"
+    TZ: Asia/Kuala_Lumpur
+    LOG_LEVEL: info
+    LOG_FORMAT: json
+    LOG_SERVICE_NAME: sub2api
+    LOG_ENV: public-sandbox
+    LOG_OUTPUT_TO_STDOUT: "true"
+    LOG_OUTPUT_TO_FILE: "true"
+    SECURITY_TRUST_FORWARDED_IP_FOR_API_KEY_ACL: "false"
+    SECURITY_URL_ALLOWLIST_ENABLED: "true"
+    SECURITY_URL_ALLOWLIST_ALLOW_INSECURE_HTTP: "false"
+    SECURITY_URL_ALLOWLIST_ALLOW_PRIVATE_HOSTS: "false"
+    SECURITY_URL_ALLOWLIST_UPSTREAM_HOSTS: ""
+    CORS_ALLOWED_ORIGINS: https://${AI99T_DOMAIN:?AI99T_DOMAIN is required}
+    AI16T_HYBRID_ENABLED: "true"
+    AI16T_ISOLATED_TEST_MODE: "false"
+    AI16T_ISOLATED_TEST_HOOKS_ENABLED: "false"
+    AI16T_CORE_URL: http://commercial-core:8787
+    AI16T_CORE_SIGNING_KEY_FILE: /run/ai99t/core_signing_key
+    AI16T_FINGERPRINT_KEY_FILE: /run/ai99t/fingerprint_key
+    AI16T_PUBLIC_MODEL: ai16t-mock
+    AI16T_CORE_MODEL: gpt-4o-mini
+  depends_on:
+    postgres:
+      condition: service_healthy
+    redis:
+      condition: service_healthy
+    commercial-core:
+      condition: service_healthy
+  volumes:
+    - ./.runtime/core_signing_key:/run/ai99t/core_signing_key:ro
+    - ./.runtime/fingerprint_key:/run/ai99t/fingerprint_key:ro
+  networks:
+    - platform_b_private
+    - platform_b_edge
+  healthcheck:
+    test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:8080/ready"]
+    interval: 10s
+    timeout: 3s
+    retries: 30
+    start_period: 15s
+
+services:
+  edge:
+    image: caddy:2.10.2-alpine
+    restart: unless-stopped
+    init: true
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+    env_file:
+      - .runtime/public.env
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,mode=1777
+    networks:
+      - platform_b_edge
+    depends_on:
+      sub2api-blue:
+        condition: service_healthy
+
+  sub2api-blue:
+    <<: *sub2api-slot
+    ports:
+      - "127.0.0.1:${BLUE_LOOPBACK_PORT:-18181}:8080"
+    volumes:
+      - sub2api_blue_data:/app/data
+      - ./.runtime/core_signing_key:/run/ai99t/core_signing_key:ro
+      - ./.runtime/fingerprint_key:/run/ai99t/fingerprint_key:ro
+
+  sub2api-green:
+    <<: *sub2api-slot
+    ports:
+      - "127.0.0.1:${GREEN_LOOPBACK_PORT:-18182}:8080"
+    volumes:
+      - sub2api_green_data:/app/data
+      - ./.runtime/core_signing_key:/run/ai99t/core_signing_key:ro
+      - ./.runtime/fingerprint_key:/run/ai99t/fingerprint_key:ro
+
+  migration-check:
+    <<: *sub2api-slot
+    profiles: ["migration-check"]
+    restart: "no"
+    environment:
+      <<: *sub2api-environment
+      DATABASE_DBNAME: ai99t_sub2api_restore_verify
+      AI16T_HYBRID_ENABLED: "false"
+    volumes:
+      - migration_check_data:/app/data
+      - ./.runtime/core_signing_key:/run/ai99t/core_signing_key:ro
+      - ./.runtime/fingerprint_key:/run/ai99t/fingerprint_key:ro
+    networks:
+      - platform_b_private
+
+  commercial-core:
+    build:
+      context: ${AI16T_CORE_SOURCE_DIR:?AI16T_CORE_SOURCE_DIR is required}
+      dockerfile: Dockerfile
+      args:
+        TP_OCI_REVISION: 56108397f31a97926f33d28420e9b44a52547bd2
+        TP_OCI_TREE: 6057218ef7291f5d9fb493e8fb7b02fa059ef049
+        TP_EVIDENCE_RUN_ID: ai99t-platform-b-public-sandbox
+    image: ai99t/commercial-core:56108397
+    restart: unless-stopped
+    init: true
+    entrypoint: ["python", "/bridge/core_bridge.py"]
+    read_only: true
+    user: "65532:65532"
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,mode=1777
+    environment:
+      PYTHONPATH: /app:/opt/cpython/lib/python3.12/site-packages
+      TP_BIND_HOST: 0.0.0.0
+      TP_CONTAINER_ISOLATION_ACK: "1"
+      TP_DATABASE_PATH: /data/token-platform.sqlite3
+      TP_RUNTIME_MODE: isolated-test
+      TP_TEST_MODE: mock-only-enabled
+      TP_MIN_PROFIT_MARGIN_PPM: "100000"
+      AI16T_CORE_SIGNING_KEY_FILE: /run/ai99t/core_signing_key
+      AI16T_MOCK_PROVIDER_KEY_FILE: /run/ai99t/mock_provider_key
+      AI16T_MOCK_PROVIDER_URL: http://mock-provider:9090
+      AI16T_INITIAL_CREDIT_MICRO: "200000"
+    depends_on:
+      mock-provider:
+        condition: service_healthy
+    volumes:
+      - core_data:/data
+      - ../core_bridge.py:/bridge/core_bridge.py:ro
+      - ../core_evidence.py:/evidence/core_evidence.py:ro
+      - ../staging/core_backup.py:/ops/core_backup.py:ro
+      - ./.runtime/core_signing_key:/run/ai99t/core_signing_key:ro
+      - ./.runtime/mock_provider_key:/run/ai99t/mock_provider_key:ro
+    networks:
+      - platform_b_private
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8787/health', timeout=2).read()"
+      interval: 10s
+      timeout: 3s
+      retries: 30
+      start_period: 15s
+
+  mock-provider:
+    image: ai99t/commercial-core:56108397
+    restart: unless-stopped
+    init: true
+    entrypoint: ["python", "/mock/mock_provider.py"]
+    read_only: true
+    user: "65532:65532"
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,mode=1777
+    environment:
+      AI16T_MOCK_PROVIDER_KEY_FILE: /run/ai99t/mock_provider_key
+    volumes:
+      - ../mock_provider.py:/mock/mock_provider.py:ro
+      - ./.runtime/mock_provider_key:/run/ai99t/mock_provider_key:ro
+    networks:
+      - platform_b_private
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request; urllib.request.urlopen('http://127.0.0.1:9090/health', timeout=2).read()"
+      interval: 10s
+      timeout: 3s
+      retries: 30
+      start_period: 15s
+
+  postgres:
+    image: postgres:18-alpine
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    environment:
+      POSTGRES_USER: ai99t_sub2api
+      POSTGRES_PASSWORD_FILE: /run/ai99t/database_password
+      POSTGRES_DB: ai99t_sub2api
+      TZ: Asia/Kuala_Lumpur
+    volumes:
+      - postgres_data:/var/lib/postgresql
+      - postgres_backup:/backup
+      - ./.runtime/database_password:/run/ai99t/database_password:ro
+    networks:
+      - platform_b_private
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ai99t_sub2api -d ai99t_sub2api"]
+      interval: 10s
+      timeout: 3s
+      retries: 30
+      start_period: 10s
+
+  redis:
+    image: redis:8-alpine
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    command:
+      - sh
+      - -eu
+      - -c
+      - |
+        umask 077
+        REDIS_PASSWORD="$$(cat /run/ai99t/redis_password)"
+        case "$${REDIS_PASSWORD}" in
+          *[!A-Za-z0-9_@%+=:,.-]*) exit 1 ;;
+        esac
+        printf 'appendonly yes\nrequirepass %s\n' "$${REDIS_PASSWORD}" > /tmp/redis.conf
+        exec redis-server /tmp/redis.conf
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,mode=1777
+    volumes:
+      - redis_data:/data
+      - ./.runtime/redis_password:/run/ai99t/redis_password:ro
+    networks:
+      - platform_b_private
+    healthcheck:
+      test: ["CMD-SHELL", "REDISCLI_AUTH=\"$$(cat /run/ai99t/redis_password)\" redis-cli ping | grep -q PONG"]
+      interval: 10s
+      timeout: 3s
+      retries: 30
+      start_period: 10s
+
+networks:
+  platform_b_private:
+    name: ai99t-platform-b-private
+    internal: true
+  platform_b_edge:
+    name: ai99t-platform-b-edge
+    ipam:
+      config:
+        - subnet: 172.31.99.0/24
+
+volumes:
+  sub2api_blue_data:
+    name: ai99t-platform-b-blue-data
+  sub2api_green_data:
+    name: ai99t-platform-b-green-data
+  migration_check_data:
+    name: ai99t-platform-b-migration-check-data
+  postgres_data:
+    name: ai99t-platform-b-postgres-data
+  postgres_backup:
+    name: ai99t-platform-b-postgres-backup
+  redis_data:
+    name: ai99t-platform-b-redis-data
+  core_data:
+    name: ai99t-platform-b-core-data
+  caddy_data:
+    name: ai99t-platform-b-caddy-data
+  caddy_config:
+    name: ai99t-platform-b-caddy-config
