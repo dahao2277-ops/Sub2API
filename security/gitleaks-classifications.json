@@ -1,0 +1,2469 @@
+{
+  "schema_version": 1,
+  "generated_at": "2026-08-24T17:53:12+08:00",
+  "repository": "Sub2API",
+  "baseline_commit": "47673ceda0a7e10e6bb6b59a6bc4d70c19fb8d6a",
+  "scanner": {
+    "name": "gitleaks",
+    "version": "8.30.1",
+    "redaction_percent": 100,
+    "history_disabled": false
+  },
+  "summary": {
+    "current_tree": 46,
+    "full_history": 89,
+    "total_review_records": 135,
+    "unique_exact_allowlist_fingerprints": 134,
+    "fingerprint_collision_groups": 1,
+    "real_active_secret": 0,
+    "unknown": 0,
+    "classifications": {
+      "DOCUMENTATION": 27,
+      "EXAMPLE": 1,
+      "FALSE_POSITIVE": 54,
+      "PUBLIC_OAUTH_CLIENT_ID": 11,
+      "TEST_FIXTURE": 42
+    }
+  },
+  "runtime_scope_handoff": {
+    "docker_build_context": "REQUIRES_RELEASE_OWNER_SCAN",
+    "final_image": "REQUIRES_RELEASE_OWNER_SCAN",
+    "running_container_environment": "REQUIRES_RELEASE_OWNER_SCAN",
+    "runtime_and_nginx_logs": "REQUIRES_RELEASE_OWNER_SCAN",
+    "frontend_static_and_browser_network": "REQUIRES_RELEASE_OWNER_SCAN",
+    "backup_inventory": "REQUIRES_RELEASE_OWNER_SCAN"
+  },
+  "raw_values_omitted": true,
+  "findings": [
+    {
+      "finding_id": "CUR-001",
+      "rule_id": "generic-api-key",
+      "path": "backend/internal/handler/auth_wechat_oauth_test.go",
+      "line": {
+        "start": 380,
+        "end": 380
+      },
+      "commit": null,
+      "fingerprint": "backend/internal/handler/auth_wechat_oauth_test.go:generic-api-key:380",
+      "value_fingerprint_sha256": "a8ae6e6ee929abea3afcfc5258c8ccd6f85273e0d4626d26c7279f3250f77c8e",
+      "line_hash_sha256": "62b4bbd3ab5113f19322b9bb028f414c9033797adb3d486aa5e195fd85bec77d",
+      "source": "current_tree",
+      "classification": "TEST_FIXTURE",
+      "owner": "test-infrastructure",
+      "action": "exact_fingerprint_allowlist",
+      "evidence": "Deterministic value in a test-only source file, used to exercise validation, redaction, payment, OAuth, or moderation behavior; no production lookup path."
+    },
+    {
+      "finding_id": "CUR-002",
+      "rule_id": "generic-api-key",
+      "path": "backend/internal/handler/auth_wechat_oauth_test.go",
+      "line": {
+        "start": 439,
+        "end": 439
+      },
+      "commit": null,
+      "fingerprint": "backend/internal/handler/auth_wechat_oauth_test.go:generic-api-key:439",
+      "value_fingerprint_sha256": "a8ae6e6ee929abea3afcfc5258c8ccd6f85273e0d4626d26c7279f3250f77c8e",
+      "line_hash_sha256": "96766d8fd352451e2001cef0e1c082df946a878a1ffe47c2777b7524c12f2e48",
+      "source": "current_tree",
+      "classification": "TEST_FIXTURE",
+      "owner": "test-infrastructure",
+      "action": "exact_fingerprint_allowlist",
+      "evidence": "Deterministic value in a test-only source file, used to exercise validation, redaction, payment, OAuth, or moderation behavior; no production lookup path."
+    },
+    {
+      "finding_id": "CUR-003",
+      "rule_id": "generic-api-key",
+      "path": "backend/internal/handler/stream_error_event_test.go",
+      "line": {
+        "start": 107,
+        "end": 107
+      },
+      "commit": null,
+      "fingerprint": "backend/internal/handler/stream_error_event_test.go:generic-api-key:107",
+      "value_fingerprint_sha256": "ad1624b658eaaedfa3dd3ef4c60e26445573c0369dcb1c555b258fa9092afb4c",
+      "line_hash_sha256": "13c86bf562c601fe592a65ad2b8788da1eeefdf15158f20f1170a5889b65ab01",
+      "source": "current_tree",
+      "classification": "FALSE_POSITIVE",
+      "owner": "test-infrastructure",
+      "action": "exact_fingerprint_allowlist",
+      "evidence": "Request correlation UUID in a handler test; it has no authentication semantics."
+    },
+    {
+      "finding_id": "CUR-004",
+      "rule_id": "generic-api-key",
+      "path": "backend/internal/handler/payment_handler_resume_test.go",
+      "line": {
+        "start": 170,
+        "end": 170
+      },
+      "commit": null,
+      "fingerprint": "backend/internal/handler/payment_handler_resume_test.go:generic-api-key:170",
+      "value_fingerprint_sha256": "3eb1bd439947eb762998e566ccc2e099c791118b2f40579cc4f7da2b5061b7f9",
+      "line_hash_sha256": "29c80575d7d6b694d00b5f322370452ec12a051368bc670693983112761be4d8",
+      "source": "current_tree",
+      "classification": "TEST_FIXTURE",
+      "owner": "test-infrastructure",
+      "action": "exact_fingerprint_allowlist",
+      "evidence": "Deterministic value in a test-only source file, used to exercise validation, redaction, payment, OAuth, or moderation behavior; no production lookup path."
+    },
+    {
+      "finding_id": "CUR-005",
+      "rule_id": "generic-api-key",
+      "path": "backend/internal/handler/payment_handler_resume_test.go",
+      "line": {
+        "start": 259,
+        "end": 259
+      },
+      "commit": null,
+      "fingerprint": "backend/internal/handler/payment_handler_resume_test.go:generic-api-key:259",
+      "value_fingerprint_sha256": "3eb1bd439947eb762998e566ccc2e099c791118b2f40579cc4f7da2b5061b7f9",
+      "line_hash_sha256": "29c80575d7d6b694d00b5f322370452ec12a051368bc670693983112761be4d8",
+      "source": "current_tree",
+      "classification": "TEST_FIXTURE",
+      "owner": "test-infrastructure",
+      "action": "exact_fingerprint_allowlist",
+      "evidence": "Deterministic value in a test-only source file, used to exercise validation, redaction, payment, OAuth, or moderation behavior; no production lookup path."
+    },
+    {
+      "finding_id": "CUR-006",
+      "rule_id": "generic-api-key",
+      "path": "backend/internal/payment/provider/alipay_test.go",
+      "line": {
+        "start": 67,
+        "end": 67
+      },
+      "commit": null,
+      "fingerprint": "backend/internal/payment/provider/alipay_test.go:generic-api-key:67",
+      "value_fingerprint_sha256": "5c3966c2104bb4887ab7266dc9896ac4946d8f377224d5a331b939881ef2876e",
+      "line_hash_sha256": "735d5da9e397b5234ffa8fb4c113030f0c3b17eb24962a4b0a4782dd8504fcc0",
+      "source": "current_tree",
+      "classification": "TEST_FIXTURE",
+      "owner": "test-infrastructure",
+      "action": "exact_fingerprint_allowlist",
+      "evidence": "Deterministic value in a test-only source file, used to exercise validation, redaction, payment, OAuth, or moderation behavior; no production lookup path."
+    },
+    {
+      "finding_id": "CUR-007",
+      "rule_id": "generic-api-key",
+      "path": "backend/internal/pkg/antigravity/oauth.go",
+      "line": {
+        "start": 73,
+        "end": 73
+      },
+      "commit": null,
+      "fingerprint": "backend/internal/pkg/antigravity/oauth.go:generic-api-key:73",
+      "value_fingerprint_sha256": "1d2f041093fd95aa8995a038c711d50a7960da09a505381c09a745d6ad0ecc60",
+      "line_hash_sha256": "f4bb837383af2f447db4f06e629273c862525f910e531330f09952fa9d4b50d8",
+      "source": "current_tree",
+      "classification": "PUBLIC_OAUTH_CLIENT_ID",
+      "owner": "upstream-oauth",
+      "action": "exact_fingerprint_allowlist",
+      "evidence": "Upstream installed/desktop OAuth public-client credential; not an access/refresh token or resource API key; Google installed-app guidance says embedded client secrets are not confidential."
+    },
+    {
+      "finding_id": "CUR-008",
+      "rule_id": "generic-api-key",
+      "path": "backend/internal/pkg/geminicli/constants.go",
+      "line": {
+        "start": 42,
+        "end": 42
+      },
+      "commit": null,
+      "fingerprint": "backend/internal/pkg/geminicli/constants.go:generic-api-key:42",
+      "value_fingerprint_sha256": "6a5f78b8b99dd4025e41ba11bf54c304c6af29f924c5569cc7865b2428ce03a9",
+      "line_hash_sha256": "1f2dac39d5bf6f86a097809da3bfe89085648f184e25a984ddfea4fc6cc6053e",
+      "source": "current_tree",
+      "classification": "PUBLIC_OAUTH_CLIENT_ID",
+      "owner": "upstream-oauth",
+      "action": "exact_fingerprint_allowlist",
+      "evidence": "Upstream installed/desktop OAuth public-client credential; not an access/refresh token or resource API key; Google installed-app guidance says embedded client secrets are not confidential."
+    },
+    {
+      "finding_id": "CUR-009",
+      "rule_id": "private-key",
+      "path": "backend/internal/payment/provider/wxpay_test.go",
+      "line": {
+        "start": 179,
+        "end": 181
+      },
+      "commit": null,
+      "fingerprint": "backend/internal/payment/provider/wxpay_test.go:private-key:179",
+      "value_fingerprint_sha256": "ad74ae185ab26dfbe29d435fc52ec30368faa6bd48004766f2983cb9708a3f99",
+      "line_hash_sha256": "e62496d86afd3de1c1b28135c945da27672bc42a340e171bcff3edc0a28199f3",
+      "source": "current_tree",
+      "classification": "TEST_FIXTURE",
+      "owner": "test-infrastructure",
+      "action": "exact_fingerprint_allowlist",
+      "evidence": "Test-only malformed/truncated PEM fixture used to exercise parser and validation behavior; it is not usable key material."
+    },
+    {
+      "finding_id": "CUR-010",
+      "rule_id": "private-key",
+      "path": "backend/internal/payment/provider/wxpay_test.go",
+      "line": {
+        "start": 191,
+        "end": 193
+      },
+      "commit": null,
+      "fingerprint": "backend/internal/payment/provider/wxpay_test.go:private-key:191",
+      "value_fingerprint_sha256": "bb7313ce255281a4b1f2f23a076a60cc852c43642bd852ffb4f758644208b08c",
+      "line_hash_sha256": "b658b0c2100e592e943e00399e06b336ed800ed45df94911b278c018ec97fa59",
+      "source": "current_tree",
+      "classification": "TEST_FIXTURE",
+      "owner": "test-infrastructure",
+      "action": "exact_fingerprint_allowlist",
+      "evidence": "Test-only malformed/truncated PEM fixture used to exercise parser and validation behavior; it is not usable key material."
+    },
+    {
+      "finding_id": "CUR-011",
+      "rule_id": "generic-api-key",
+      "path": "backend/internal/payment/provider/wxpay_test.go",
+      "line": {
+        "start": 553,
+        "end": 553
+      },
+      "commit": null,
+      "fingerprint": "backend/internal/payment/provider/wxpay_test.go:generic-api-key:553",
+      "value_fingerprint_sha256": "3fc6d1751a969fea49764515438a8a6a7ae064083aacce0c5709b222eb922438",
+      "line_hash_sha256": "252277a710e30589be565db7b32e1cdc7e7c8ef238955540314049cafe72304f",
+      "source": "current_tree",
+      "classification": "TEST_FIXTURE",
+      "owner": "test-infrastructure",
+      "action": "exact_fingerprint_allowlist",
+      "evidence": "Deterministic value in a test-only source file, used to exercise validation, redaction, payment, OAuth, or moderation behavior; no production lookup path."
+    },
+    {
+      "finding_id": "CUR-012",
+      "rule_id": "generic-api-key",
+      "path": "backend/internal/handler/openai_gateway_handler_test.go",
+      "line": {
+        "start": 657,
+        "end": 657
+      },
+      "commit": null,
+      "fingerprint": "backend/internal/handler/openai_gateway_handler_test.go:generic-api-key:657",
+      "value_fingerprint_sha256": "09d0ceca06974190cf3cc91ff46a5df72e81eda40b3e203c6cc223e89e06796e",
+      "line_hash_sha256": "6ab1dc45d19938a9c9fd2b6f16df7980ad075010c14512b09e14ed82360ea09e",
+      "source": "current_tree",
+      "classification": "FALSE_POSITIVE",
+      "owner": "test-infrastructure",
+      "action": "exact_fingerprint_allowlist",
+      "evidence": "Model identifier asserted by a routing test; it has no authentication semantics."
+    },
+    {
+      "finding_id": "CUR-013",
+      "rule_id": "generic-api-key",
+      "path": "backend/internal/repository/migrations_runner_checksum_test.go",
+      "line": {
+        "start": 93,
+        "end": 94
+      },
+      "commit": null,
+      "fingerprint": "backend/internal/repository/migrations_runner_checksum_test.go:generic-api-key:93",
+      "value_fingerprint_sha256": "c8fcb41e8c297fce34d0cb2cbabfdc42023e4b64c46724718d8653021fed6624",
+      "line_hash_sha256": "00bdf76c3c08ee875a38d0f6345e209152adbe687be3e0484562edc4d042d84e",
+      "source": "current_tree",
+      "classification": "FALSE_POSITIVE",
+      "owner": "test-infrastructure",
+      "action": "exact_fingerprint_allowlist",
+      "evidence": "Migration filename/checksum fixture; it has no authentication semantics."
+    },
+    {
+      "finding_id": "CUR-014",
+      "rule_id": "generic-api-key",
+      "path": "backend/internal/repository/ops_repo_preagg.go",
+      "line": {
+        "start": 208,
+        "end": 210
+      },
+      "commit": null,
+      "fingerprint": "backend/internal/repository/ops_repo_preagg.go:generic-api-key:208",
+      "value_fingerprint_sha256": "fef7476293ef0e8c7a91ad7b6a0a43358bcca4fa52fcb5581153903d5ace23e4",
+      "line_hash_sha256": "f49d28f56f7c187b73642785f54258bf9005e6adc6369750f7f624064bcfed56",
+      "source": "current_tree",
+      "classification": "FALSE_POSITIVE",
+      "owner": "security",
+      "action": "exact_fingerprint_allowlist",
+      "evidence": "SQL metric column name containing the word token; it stores usage counts, not credentials."
+    },
+    {
+      "finding_id": "CUR-015",
+      "rule_id": "generic-api-key",
+      "path": "backend/internal/repository/ops_repo_preagg.go",
+      "line": {
+        "start": 321,
+        "end": 323
+      },
+      "commit": null,
+      "fingerprint": "backend/internal/repository/ops_repo_preagg.go:generic-api-key:321",
+      "value_fingerprint_sha256": "fef7476293ef0e8c7a91ad7b6a0a43358bcca4fa52fcb5581153903d5ace23e4",
+      "line_hash_sha256": "f49d28f56f7c187b73642785f54258bf9005e6adc6369750f7f624064bcfed56",
+      "source": "current_tree",
+      "classification": "FALSE_POSITIVE",
+      "owner": "security",
+      "action": "exact_fingerprint_allowlist",
+      "evidence": "SQL metric column name containing the word token; it stores usage counts, not credentials."
+    },
+    {
+      "finding_id": "CUR-016",
+      "rule_id": "private-key",
+      "path": "backend/internal/service/batch_image_provider_vertex_test.go",
+      "line": {
+        "start": 237,
+        "end": 310
+      },
+      "commit": null,
+      "fingerprint": "backend/internal/service/batch_image_provider_vertex_test.go:private-key:237",
+      "value_fingerprint_sha256": "ae537c3534806901b13e362a59daef118e52aec4a5c58d42cd1d04ccf5a1831e",
+      "line_hash_sha256": "73c2e529bc153a84aafcaabcc64fd0d7f9184525b753d8426bdfd64592889d0e",
+      "source": "current_tree",
+      "classification": "TEST_FIXTURE",
+      "owner": "test-infrastructure",
+      "action": "exact_fingerprint_allowlist",
+      "evidence": "Test-only malformed/truncated PEM fixture used to exercise parser and validation behavior; it is not usable key material."
+    },
+    {
+      "finding_id": "CUR-017",
+      "rule_id": "generic-api-key",
+      "path": "backend/internal/service/gateway_beta_test.go",
+      "line": {
+        "start": 13,
+        "end": 13
+      },
+      "commit": null,
+      "fingerprint": "backend/internal/service/gateway_beta_test.go:generic-api-key:13",
+      "value_fingerprint_sha256": "577ac1adb016904259eff7b7cb12a01d97cd591d34d9ebd20780f580d9a107d7",
+      "line_hash_sha256": "a81a4d866eeb8b4db74c781f694812d695051d2f42d4f24a182a29e019fdc764",
+      "source": "current_tree",
+      "classification": "FALSE_POSITIVE",
+      "owner": "test-infrastructure",
+      "action": "exact_fingerprint_allowlist",
+      "evidence": "Protocol feature/version token or model mapping string; it does not authenticate or authorize any request."
+    },
+    {
+      "finding_id": "CUR-018",
+      "rule_id": "generic-api-key",
+      "path": "backend/internal/service/gateway_beta_test.go",
+      "line": {
+        "start": 21,
+        "end": 21
+      },
+      "commit": null,
+      "fingerprint": "backend/internal/service/gateway_beta_test.go:generic-api-key:21",
+      "value_fingerprint_sha256": "577ac1adb016904259eff7b7cb12a01d97cd591d34d9ebd20780f580d9a107d7",
+      "line_hash_sha256": "a81a4d866eeb8b4db74c781f694812d695051d2f42d4f24a182a29e019fdc764",
+      "source": "current_tree",
+      "classification": "FALSE_POSITIVE",
+      "owner": "test-infrastructure",
+      "action": "exact_fingerprint_allowlist",
+      "evidence": "Protocol feature/version token or model mapping string; it does not authenticate or authorize any request."
+    },
+    {
+      "finding_id": "CUR-019",
+      "rule_id": "generic-api-key",
+      "path": "backend/internal/service/gateway_beta_test.go",
+      "line": {
+        "start": 24,
+        "end": 24
+      },
+      "commit": null,
+      "fingerprint": "backend/internal/service/gateway_beta_test.go:generic-api-key:24",
+      "value_fingerprint_sha256": "577ac1adb016904259eff7b7cb12a01d97cd591d34d9ebd20780f580d9a107d7",
+      "line_hash_sha256": "603478e50a8a30ec9a1401f0f7a08d8f884575227aa04a32455a9688b221b37c",
+      "source": "current_tree",
+      "classification": "FALSE_POSITIVE",
+      "owner": "test-infrastructure",
+      "action": "exact_fingerprint_allowlist",
+      "evidence": "Protocol feature/version token or model mapping string; it does not authenticate or authorize any request."
+    },
+    {
+      "finding_id": "CUR-020",
+      "rule_id": "generic-api-key",
+      "path": "backend/internal/service/gateway_beta_test.go",
+      "line": {
+        "start": 38,
+        "end": 38
+      },
+      "commit": null,
+      "fingerprint": "backend/internal/service/gateway_beta_test.go:generic-api-key:38",
+      "value_fingerprint_sha256": "577ac1adb016904259eff7b7cb12a01d97cd591d34d9ebd20780f580d9a107d7",
+      "line_hash_sha256": "e15acd861851b8ff2f25768759ba0cb54f90b7868a8e590d0197f05adc78c06a",
+      "source": "current_tree",
+      "classification": "FALSE_POSITIVE",
+      "owner": "test-infrastructure",
+      "action": "exact_fingerprint_allowlist",
+      "evidence": "Protocol feature/version token or model mapping string; it does not authenticate or authorize any request."
+    },
+    {
+      "finding_id": "CUR-021",
+      "rule_id": "generic-api-key",
+      "path": "backend/internal/service/gateway_beta_test.go",
+      "line": {
+        "start": 42,
+        "end": 42
+      },
+      "commit": null,
+      "fingerprint": "backend/internal/service/gateway_beta_test.go:generic-api-key:42",
+      "value_fingerprint_sha256": "577ac1adb016904259eff7b7cb12a01d97cd591d34d9ebd20780f580d9a107d7",
+      "line_hash_sha256": "b67dbc82db5647497da27d19e6065414ff42cec88e4b89b00b128f0bace081b4",
+      "source": "current_tree",
+      "classification": "FALSE_POSITIVE",
+      "owner": "test-infrastructure",
+      "action": "exact_fingerprint_allowlist",
+      "evidence": "Protocol feature/version token or model mapping string; it does not authenticate or authorize any request."
+    },
+    {
+      "finding_id": "CUR-022",
+      "rule_id": "generic-api-key",
+      "path": "backend/internal/service/gateway_beta_test.go",
+      "line": {
+        "start": 44,
+        "end": 44
+      },
+      "commit": null,
+      "fingerprint": "backend/internal/service/gateway_beta_test.go:generic-api-key:44",
+      "value_fingerprint_sha256": "577ac1adb016904259eff7b7cb12a01d97cd591d34d9ebd20780f580d9a107d7",
+      "line_hash_sha256": "e15acd861851b8ff2f25768759ba0cb54f90b7868a8e590d0197f05adc78c06a",
+      "source": "current_tree",
+      "classification": "FALSE_POSITIVE",
+      "owner": "test-infrastructure",
+      "action": "exact_fingerprint_allowlist",
+      "evidence": "Protocol feature/version token or model mapping string; it does not authenticate or authorize any request."
+    },
+    {
+      "finding_id": "CUR-023",
+      "rule_id": "generic-api-key",
+      "path": "backend/internal/service/gateway_beta_test.go",
+      "line": {
+        "start": 50,
+        "end": 50
+      },
+      "commit": null,
+      "fingerprint": "backend/internal/service/gateway_beta_test.go:generic-api-key:50",
+      "value_fingerprint_sha256": "577ac1adb016904259eff7b7cb12a01d97cd591d34d9ebd20780f580d9a107d7",
+      "line_hash_sha256": "e15acd861851b8ff2f25768759ba0cb54f90b7868a8e590d0197f05adc78c06a",
+      "source": "current_tree",
+      "classification": "FALSE_POSITIVE",
+      "owner": "test-infrastructure",
+      "action": "exact_fingerprint_allowlist",
+      "evidence": "Protocol feature/version token or model mapping string; it does not authenticate or authorize any request."
+    },
+    {
+      "finding_id": "CUR-024",
+      "rule_id": "generic-api-key",
+      "path": "backend/internal/service/gateway_beta_test.go",
+      "line": {
+        "start": 54,
+        "end": 54
+      },
+      "commit": null,
+      "fingerprint": "backend/internal/service/gateway_beta_test.go:generic-api-key:54",
+      "value_fingerprint_sha256": "577ac1adb016904259eff7b7cb12a01d97cd591d34d9ebd20780f580d9a107d7",
+      "line_hash_sha256": "52589ec51f5789eb8d2075aa599efd2e103dc70c8625181c8c5c2a2e91c33ad9",
+      "source": "current_tree",
+      "classification": "FALSE_POSITIVE",
+      "owner": "test-infrastructure",
+      "action": "exact_fingerprint_allowlist",
+      "evidence": "Protocol feature/version token or model mapping string; it does not authenticate or authorize any request."
+    },
+    {
+      "finding_id": "CUR-025",
+      "rule_id": "generic-api-key",
+      "path": "backend/internal/service/gateway_beta_test.go",
+      "line": {
+        "start": 56,
+        "end": 56
+      },
+      "commit": null,
+      "fingerprint": "backend/internal/service/gateway_beta_test.go:generic-api-key:56",
+      "value_fingerprint_sha256": "577ac1adb016904259eff7b7cb12a01d97cd591d34d9ebd20780f580d9a107d7",
+      "line_hash_sha256": "e15acd861851b8ff2f25768759ba0cb54f90b7868a8e590d0197f05adc78c06a",
+      "source": "current_tree",
+      "classification": "FALSE_POSITIVE",
+      "owner": "test-infrastructure",
+      "action": "exact_fingerprint_allowlist",
+      "evidence": "Protocol feature/version token or model mapping string; it does not authenticate or authorize any request."
+    },
+    {
+      "finding_id": "CUR-026",
+      "rule_id": "generic-api-key",
+      "path": "backend/internal/service/gateway_beta_test.go",
+      "line": {
+        "start": 68,
+        "end": 68
+      },
+      "commit": null,
+      "fingerprint": "backend/internal/service/gateway_beta_test.go:generic-api-key:68",
+      "value_fingerprint_sha256": "577ac1adb016904259eff7b7cb12a01d97cd591d34d9ebd20780f580d9a107d7",
+      "line_hash_sha256": "e15acd861851b8ff2f25768759ba0cb54f90b7868a8e590d0197f05adc78c06a",
+      "source": "current_tree",
+      "classification": "FALSE_POSITIVE",
+      "owner": "test-infrastructure",
+      "action": "exact_fingerprint_allowlist",
+      "evidence": "Protocol feature/version token or model mapping string; it does not authenticate or authorize any request."
+    },
+    {
+      "finding_id": "CUR-027",
+      "rule_id": "generic-api-key",
+      "path": "backend/internal/service/gateway_beta_test.go",
+      "line": {
+        "start": 78,
+        "end": 78
+      },
+      "commit": null,
+      "fingerprint": "backend/internal/service/gateway_beta_test.go:generic-api-key:78",
+      "value_fingerprint_sha256": "577ac1adb016904259eff7b7cb12a01d97cd591d34d9ebd20780f580d9a107d7",
+      "line_hash_sha256": "52589ec51f5789eb8d2075aa599efd2e103dc70c8625181c8c5c2a2e91c33ad9",
+      "source": "current_tree",
+      "classification": "FALSE_POSITIVE",
+      "owner": "test-infrastructure",
+      "action": "exact_fingerprint_allowlist",
+      "evidence": "Protocol feature/version token or model mapping string; it does not authenticate or authorize any request."
+    },
+    {
+      "finding_id": "CUR-028",
+      "rule_id": "generic-api-key",
+      "path": "backend/internal/service/gateway_beta_test.go",
+      "line": {
+        "start": 80,
+        "end": 80
+      },
+      "commit": null,
+      "fingerprint": "backend/internal/service/gateway_beta_test.go:generic-api-key:80",
+      "value_fingerprint_sha256": "577ac1adb016904259eff7b7cb12a01d97cd591d34d9ebd20780f580d9a107d7",
+      "line_hash_sha256": "e15acd861851b8ff2f25768759ba0cb54f90b7868a8e590d0197f05adc78c06a",
+      "source": "current_tree",
+      "classification": "FALSE_POSITIVE",
+      "owner": "test-infrastructure",
+      "action": "exact_fingerprint_allowlist",
+      "evidence": "Protocol feature/version token or model mapping string; it does not authenticate or authorize any request."
+    },
+    {
+      "finding_id": "CUR-029",
+      "rule_id": "generic-api-key",
+      "path": "backend/internal/service/gateway_beta_test.go",
+      "line": {
+        "start": 86,
+        "end": 86
+      },
+      "commit": null,
+      "fingerprint": "backend/internal/service/gateway_beta_test.go:generic-api-key:86",
+      "value_fingerprint_sha256": "577ac1adb016904259eff7b7cb12a01d97cd591d34d9ebd20780f580d9a107d7",
+      "line_hash_sha256": "e15acd861851b8ff2f25768759ba0cb54f90b7868a8e590d0197f05adc78c06a",
+      "source": "current_tree",
+      "classification": "FALSE_POSITIVE",
+      "owner": "test-infrastructure",
+      "action": "exact_fingerprint_allowlist",
+      "evidence": "Protocol feature/version token or model mapping string; it does not authenticate or authorize any request."
+    },
+    {
+      "finding_id": "CUR-030",
+      "rule_id": "generic-api-key",
+      "path": "backend/internal/service/gateway_beta_test.go",
+      "line": {
+        "start": 105,
+        "end": 105
+      },
+      "commit": null,
+      "fingerprint": "backend/internal/service/gateway_beta_test.go:generic-api-key:105",
+      "value_fingerprint_sha256": "577ac1adb016904259eff7b7cb12a01d97cd591d34d9ebd20780f580d9a107d7",
+      "line_hash_sha256": "3255d0bf81898faaa5d91490379d8f51805246bde4013a2701355debed91d588",
+      "source": "current_tree",
+      "classification": "FALSE_POSITIVE",
+      "owner": "test-infrastructure",
+      "action": "exact_fingerprint_allowlist",
+      "evidence": "Protocol feature/version token or model mapping string; it does not authenticate or authorize any request."
+    },
+    {
+      "finding_id": "CUR-031",
+      "rule_id": "generic-api-key",
+      "path": "backend/internal/service/gateway_beta_test.go",
+      "line": {
+        "start": 115,
+        "end": 115
+      },
+      "commit": null,
+      "fingerprint": "backend/internal/service/gateway_beta_test.go:generic-api-key:115",
+      "value_fingerprint_sha256": "577ac1adb016904259eff7b7cb12a01d97cd591d34d9ebd20780f580d9a107d7",
+      "line_hash_sha256": "3255d0bf81898faaa5d91490379d8f51805246bde4013a2701355debed91d588",
+      "source": "current_tree",
+      "classification": "FALSE_POSITIVE",
+      "owner": "test-infrastructure",
+      "action": "exact_fingerprint_allowlist",
+      "evidence": "Protocol feature/version token or model mapping string; it does not authenticate or authorize any request."
+    },
+    {
+      "finding_id": "CUR-032",
+      "rule_id": "generic-api-key",
+      "path": "backend/internal/service/gateway_beta_test.go",
+      "line": {
+        "start": 178,
+        "end": 178
+      },
+      "commit": null,
+      "fingerprint": "backend/internal/service/gateway_beta_test.go:generic-api-key:178",
+      "value_fingerprint_sha256": "577ac1adb016904259eff7b7cb12a01d97cd591d34d9ebd20780f580d9a107d7",
+      "line_hash_sha256": "08e7b7cbd214dd638c22953cb6a0fda13019406ee9fbaab811ed350b183c7afc",
+      "source": "current_tree",
+      "classification": "FALSE_POSITIVE",
+      "owner": "test-infrastructure",
+      "action": "exact_fingerprint_allowlist",
+      "evidence": "Protocol feature/version token or model mapping string; it does not authenticate or authorize any request."
+    },
+    {
+      "finding_id": "CUR-033",
+      "rule_id": "generic-api-key",
+      "path": "backend/internal/service/gateway_beta_test.go",
+      "line": {
+        "start": 194,
+        "end": 194
+      },
+      "commit": null,
+      "fingerprint": "backend/internal/service/gateway_beta_test.go:generic-api-key:194",
+      "value_fingerprint_sha256": "577ac1adb016904259eff7b7cb12a01d97cd591d34d9ebd20780f580d9a107d7",
+      "line_hash_sha256": "0b9b29b62f7c43dcda8a48862bf513558e658c8566f2097b813668d7d36f50ab",
+      "source": "current_tree",
+      "classification": "FALSE_POSITIVE",
+      "owner": "test-infrastructure",
+      "action": "exact_fingerprint_allowlist",
+      "evidence": "Protocol feature/version token or model mapping string; it does not authenticate or authorize any request."
+    },
+    {
+      "finding_id": "CUR-034",
+      "rule_id": "generic-api-key",
+      "path": "backend/internal/service/gateway_context_management_test.go",
+      "line": {
+        "start": 94,
+        "end": 94
+      },
+      "commit": null,
+      "fingerprint": "backend/internal/service/gateway_context_management_test.go:generic-api-key:94",
+      "value_fingerprint_sha256": "577ac1adb016904259eff7b7cb12a01d97cd591d34d9ebd20780f580d9a107d7",
+      "line_hash_sha256": "918fb1484c1ca4ec2082609673f32575b8d6883b466106fbceaedf6b9d0a083d",
+      "source": "current_tree",
+      "classification": "FALSE_POSITIVE",
+      "owner": "test-infrastructure",
+      "action": "exact_fingerprint_allowlist",
+      "evidence": "Protocol feature/version token or model mapping string; it does not authenticate or authorize any request."
+    },
+    {
+      "finding_id": "CUR-035",
+      "rule_id": "jwt",
+      "path": "backend/internal/service/content_moderation_test.go",
+      "line": {
+        "start": 423,
+        "end": 423
+      },
+      "commit": null,
+      "fingerprint": "backend/internal/service/content_moderation_test.go:jwt:423",
+      "value_fingerprint_sha256": "0ed1bb8c4d701c6afffe128ccfd9f704e43da38bef281ca6f4df5fe17e80b00f",
+      "line_hash_sha256": "669ab30518e735d86352ce6bc75af021bfb7e8ce1b11fdb97d96d80592fbc416",
+      "source": "current_tree",
+      "classification": "TEST_FIXTURE",
+      "owner": "test-infrastructure",
+      "action": "exact_fingerprint_allowlist",
+      "evidence": "Deterministic value in a test-only source file, used to exercise validation, redaction, payment, OAuth, or moderation behavior; no production lookup path."
+    },
+    {
+      "finding_id": "CUR-036",
+      "rule_id": "generic-api-key",
+      "path": "backend/internal/service/content_moderation_test.go",
+      "line": {
+        "start": 423,
+        "end": 423
+      },
+      "commit": null,
+      "fingerprint": "backend/internal/service/content_moderation_test.go:generic-api-key:423",
+      "value_fingerprint_sha256": "4d67feca69c5bbeb4cb5f2678ae2dde8ecf1ca5e0a1ceb5a74e6b411a2ee15d4",
+      "line_hash_sha256": "669ab30518e735d86352ce6bc75af021bfb7e8ce1b11fdb97d96d80592fbc416",
+      "source": "current_tree",
+      "classification": "TEST_FIXTURE",
+      "owner": "test-infrastructure",
+      "action": "exact_fingerprint_allowlist",
+      "evidence": "Deterministic value in a test-only source file, used to exercise validation, redaction, payment, OAuth, or moderation behavior; no production lookup path."
+    },
+    {
+      "finding_id": "CUR-037",
+      "rule_id": "generic-api-key",
+      "path": "backend/internal/service/payment_order_result_test.go",
+      "line": {
+        "start": 370,
+        "end": 370
+      },
+      "commit": null,
+      "fingerprint": "backend/internal/service/payment_order_result_test.go:generic-api-key:370",
+      "value_fingerprint_sha256": "3eb1bd439947eb762998e566ccc2e099c791118b2f40579cc4f7da2b5061b7f9",
+      "line_hash_sha256": "29c80575d7d6b694d00b5f322370452ec12a051368bc670693983112761be4d8",
+      "source": "current_tree",
+      "classification": "TEST_FIXTURE",
+      "owner": "test-infrastructure",
+      "action": "exact_fingerprint_allowlist",
+      "evidence": "Deterministic value in a test-only source file, used to exercise validation, redaction, payment, OAuth, or moderation behavior; no production lookup path."
+    },
+    {
+      "finding_id": "CUR-038",
+      "rule_id": "generic-api-key",
+      "path": "backend/internal/service/payment_webhook_provider_test.go",
+      "line": {
+        "start": 21,
+        "end": 21
+      },
+      "commit": null,
+      "fingerprint": "backend/internal/service/payment_webhook_provider_test.go:generic-api-key:21",
+      "value_fingerprint_sha256": "3eb1bd439947eb762998e566ccc2e099c791118b2f40579cc4f7da2b5061b7f9",
+      "line_hash_sha256": "aaab856e1af3feb9eef64bb45522badb7c1a01f970406833d982a4ea9e398f9a",
+      "source": "current_tree",
+      "classification": "TEST_FIXTURE",
+      "owner": "test-infrastructure",
+      "action": "exact_fingerprint_allowlist",
+      "evidence": "Deterministic value in a test-only source file, used to exercise validation, redaction, payment, OAuth, or moderation behavior; no production lookup path."
+    },
+    {
+      "finding_id": "CUR-039",
+      "rule_id": "generic-api-key",
+      "path": "backend/internal/util/logredact/redact_test.go",
+      "line": {
+        "start": 9,
+        "end": 9
+      },
+      "commit": null,
+      "fingerprint": "backend/internal/util/logredact/redact_test.go:generic-api-key:9",
+      "value_fingerprint_sha256": "8c4b7a1d9e1714bdcffc155110e98ab8f34d1223d1d602f7f246072bdaaa3555",
+      "line_hash_sha256": "ada1e576c9f30f24f9ff572e6eb8430f3430c5c6593a1dfb63c612b9d204098b",
+      "source": "current_tree",
+      "classification": "TEST_FIXTURE",
+      "owner": "test-infrastructure",
+      "action": "exact_fingerprint_allowlist",
+      "evidence": "Deterministic value in a test-only source file, used to exercise validation, redaction, payment, OAuth, or moderation behavior; no production lookup path."
+    },
+    {
+      "finding_id": "CUR-040",
+      "rule_id": "generic-api-key",
+      "path": "backend/internal/util/logredact/redact_test.go",
+      "line": {
+        "start": 23,
+        "end": 23
+      },
+      "commit": null,
+      "fingerprint": "backend/internal/util/logredact/redact_test.go:generic-api-key:23",
+      "value_fingerprint_sha256": "8c4b7a1d9e1714bdcffc155110e98ab8f34d1223d1d602f7f246072bdaaa3555",
+      "line_hash_sha256": "86cf154189a73258fcd28bded984aababa28981704ae3996d27acb9afab6ad42",
+      "source": "current_tree",
+      "classification": "TEST_FIXTURE",
+      "owner": "test-infrastructure",
+      "action": "exact_fingerprint_allowlist",
+      "evidence": "Deterministic value in a test-only source file, used to exercise validation, redaction, payment, OAuth, or moderation behavior; no production lookup path."
+    },
+    {
+      "finding_id": "CUR-041",
+      "rule_id": "generic-api-key",
+      "path": "docs/ADMIN_PAYMENT_INTEGRATION_API.md",
+      "line": {
+        "start": 44,
+        "end": 44
+      },
+      "commit": null,
+      "fingerprint": "docs/ADMIN_PAYMENT_INTEGRATION_API.md:generic-api-key:44",
+      "value_fingerprint_sha256": "a7b21557e491698d28b927db10adebef854375ee55ea522b47c71ef04d482162",
+      "line_hash_sha256": "9937f6c4827d10b534fbf73d026b04c05eac90d502d0f6ef321e32d432ff67bd",
+      "source": "current_tree",
+      "classification": "DOCUMENTATION",
+      "owner": "documentation",
+      "action": "exact_fingerprint_allowlist",
+      "evidence": "Payment integration documentation uses deterministic sample order and idempotency identifiers; no authentication or signing material."
+    },
+    {
+      "finding_id": "CUR-042",
+      "rule_id": "generic-api-key",
+      "path": "docs/ADMIN_PAYMENT_INTEGRATION_API.md",
+      "line": {
+        "start": 57,
+        "end": 57
+      },
+      "commit": null,
+      "fingerprint": "docs/ADMIN_PAYMENT_INTEGRATION_API.md:generic-api-key:57",
+      "value_fingerprint_sha256": "abea3f5bb180e35c041e7c2935e3a27cf6bda2cf1c71c10969238e5af4e017dc",
+      "line_hash_sha256": "ca8088400d0adb07690badd24d6e6b59a7c5d411d9dc6dececfbcf54361c418d",
+      "source": "current_tree",
+      "classification": "DOCUMENTATION",
+      "owner": "documentation",
+      "action": "exact_fingerprint_allowlist",
+      "evidence": "Payment integration documentation uses deterministic sample order and idempotency identifiers; no authentication or signing material."
+    },
+    {
+      "finding_id": "CUR-043",
+      "rule_id": "generic-api-key",
+      "path": "docs/ADMIN_PAYMENT_INTEGRATION_API.md",
+      "line": {
+        "start": 64,
+        "end": 64
+      },
+      "commit": null,
+      "fingerprint": "docs/ADMIN_PAYMENT_INTEGRATION_API.md:generic-api-key:64",
+      "value_fingerprint_sha256": "a7b21557e491698d28b927db10adebef854375ee55ea522b47c71ef04d482162",
+      "line_hash_sha256": "5cff1030b1089f3b748b391cdaec267d40b948c54ce99d1ebf8fd63edd155748",
+      "source": "current_tree",
+      "classification": "DOCUMENTATION",
+      "owner": "documentation",
+      "action": "exact_fingerprint_allowlist",
+      "evidence": "Payment integration documentation uses deterministic sample order and idempotency identifiers; no authentication or signing material."
+    },
+    {
+      "finding_id": "CUR-044",
+      "rule_id": "generic-api-key",
+      "path": "docs/ADMIN_PAYMENT_INTEGRATION_API.md",
+      "line": {
+        "start": 164,
+        "end": 164
+      },
+      "commit": null,
+      "fingerprint": "docs/ADMIN_PAYMENT_INTEGRATION_API.md:generic-api-key:164",
+      "value_fingerprint_sha256": "a7b21557e491698d28b927db10adebef854375ee55ea522b47c71ef04d482162",
+      "line_hash_sha256": "9937f6c4827d10b534fbf73d026b04c05eac90d502d0f6ef321e32d432ff67bd",
+      "source": "current_tree",
+      "classification": "DOCUMENTATION",
+      "owner": "documentation",
+      "action": "exact_fingerprint_allowlist",
+      "evidence": "Payment integration documentation uses deterministic sample order and idempotency identifiers; no authentication or signing material."
+    },
+    {
+      "finding_id": "CUR-045",
+      "rule_id": "generic-api-key",
+      "path": "docs/ADMIN_PAYMENT_INTEGRATION_API.md",
+      "line": {
+        "start": 177,
+        "end": 177
+      },
+      "commit": null,
+      "fingerprint": "docs/ADMIN_PAYMENT_INTEGRATION_API.md:generic-api-key:177",
+      "value_fingerprint_sha256": "abea3f5bb180e35c041e7c2935e3a27cf6bda2cf1c71c10969238e5af4e017dc",
+      "line_hash_sha256": "ca8088400d0adb07690badd24d6e6b59a7c5d411d9dc6dececfbcf54361c418d",
+      "source": "current_tree",
+      "classification": "DOCUMENTATION",
+      "owner": "documentation",
+      "action": "exact_fingerprint_allowlist",
+      "evidence": "Payment integration documentation uses deterministic sample order and idempotency identifiers; no authentication or signing material."
+    },
+    {
+      "finding_id": "CUR-046",
+      "rule_id": "generic-api-key",
+      "path": "docs/ADMIN_PAYMENT_INTEGRATION_API.md",
+      "line": {
+        "start": 184,
+        "end": 184
+      },
+      "commit": null,
+      "fingerprint": "docs/ADMIN_PAYMENT_INTEGRATION_API.md:generic-api-key:184",
+      "value_fingerprint_sha256": "a7b21557e491698d28b927db10adebef854375ee55ea522b47c71ef04d482162",
+      "line_hash_sha256": "5cff1030b1089f3b748b391cdaec267d40b948c54ce99d1ebf8fd63edd155748",
+      "source": "current_tree",
+      "classification": "DOCUMENTATION",
+      "owner": "documentation",
+      "action": "exact_fingerprint_allowlist",
+      "evidence": "Payment integration documentation uses deterministic sample order and idempotency identifiers; no authentication or signing material."
+    },
+    {
+      "finding_id": "HIST-001",
+      "rule_id": "generic-api-key",
+      "path": "backend/internal/handler/openai_gateway_handler_test.go",
+      "line": {
+        "start": 657,
+        "end": 657
+      },
+      "commit": "499a8ee4235eea151b9907b5cda408b43dc29c0d",
+      "fingerprint": "499a8ee4235eea151b9907b5cda408b43dc29c0d:backend/internal/handler/openai_gateway_handler_test.go:generic-api-key:657",
+      "value_fingerprint_sha256": "09d0ceca06974190cf3cc91ff46a5df72e81eda40b3e203c6cc223e89e06796e",
+      "line_hash_sha256": "6ab1dc45d19938a9c9fd2b6f16df7980ad075010c14512b09e14ed82360ea09e",
+      "source": "full_history",
+      "classification": "FALSE_POSITIVE",
+      "owner": "test-infrastructure",
+      "action": "exact_fingerprint_allowlist",
+      "evidence": "Model identifier asserted by a routing test; it has no authentication semantics."
+    },
+    {
+      "finding_id": "HIST-002",
+      "rule_id": "private-key",
+      "path": "backend/internal/service/batch_image_provider_vertex_test.go",
+      "line": {
+        "start": 210,
+        "end": 283
+      },
+      "commit": "a994fbd77a86cc750a0bcf3096fc055cfb786bec",
+      "fingerprint": "a994fbd77a86cc750a0bcf3096fc055cfb786bec:backend/internal/service/batch_image_provider_vertex_test.go:private-key:210",
+      "value_fingerprint_sha256": "ae537c3534806901b13e362a59daef118e52aec4a5c58d42cd1d04ccf5a1831e",
+      "line_hash_sha256": "73c2e529bc153a84aafcaabcc64fd0d7f9184525b753d8426bdfd64592889d0e",
+      "source": "full_history",
+      "classification": "TEST_FIXTURE",
+      "owner": "test-infrastructure",
+      "action": "exact_fingerprint_allowlist",
+      "evidence": "Test-only malformed/truncated PEM fixture used to exercise parser and validation behavior; it is not usable key material."
+    },
+    {
+      "finding_id": "HIST-003",
+      "rule_id": "generic-api-key",
+      "path": "backend/internal/handler/ops_error_logger_attribution_test.go",
+      "line": {
+        "start": 66,
+        "end": 66
+      },
+      "commit": "ddf063352a300a3be462cd2b92fe0a28207c2042",
+      "fingerprint": "ddf063352a300a3be462cd2b92fe0a28207c2042:backend/internal/handler/ops_error_logger_attribution_test.go:generic-api-key:66",
+      "value_fingerprint_sha256": "49de2cac12da154956fb58187ec944a4416911e871a9c39d106435880ec7953c",
+      "line_hash_sha256": "f244c56e4dc2373dc1f608cc3c27c963587810126e501d34f1d769a30da87328",
+      "source": "full_history",
+      "classification": "TEST_FIXTURE",
+      "owner": "test-infrastructure",
+      "action": "exact_fingerprint_allowlist",
+      "evidence": "Deterministic value in a test-only source file, used to exercise validation, redaction, payment, OAuth, or moderation behavior; no production lookup path."
+    },
+    {
+      "finding_id": "HIST-004",
+      "rule_id": "generic-api-key",
+      "path": "backend/internal/handler/ops_error_logger_attribution_test.go",
+      "line": {
+        "start": 71,
+        "end": 71
+      },
+      "commit": "ddf063352a300a3be462cd2b92fe0a28207c2042",
+      "fingerprint": "ddf063352a300a3be462cd2b92fe0a28207c2042:backend/internal/handler/ops_error_logger_attribution_test.go:generic-api-key:71",
+      "value_fingerprint_sha256": "fad7820acb9bbf024bcedd4a9a51e6836ba5da0f311343893d6933b7dc470250",
+      "line_hash_sha256": "3a648a45cdef72f447bc8f5a4b48d3ea810ce29d18c75f9865ae0edf4e3d6a7a",
+      "source": "full_history",
+      "classification": "TEST_FIXTURE",
+      "owner": "test-infrastructure",
+      "action": "exact_fingerprint_allowlist",
+      "evidence": "Deterministic value in a test-only source file, used to exercise validation, redaction, payment, OAuth, or moderation behavior; no production lookup path."
+    },
+    {
+      "finding_id": "HIST-005",
+      "rule_id": "generic-api-key",
+      "path": "backend/internal/handler/ops_error_logger_attribution_test.go",
+      "line": {
+        "start": 76,
+        "end": 76
+      },
+      "commit": "ddf063352a300a3be462cd2b92fe0a28207c2042",
+      "fingerprint": "ddf063352a300a3be462cd2b92fe0a28207c2042:backend/internal/handler/ops_error_logger_attribution_test.go:generic-api-key:76",
+      "value_fingerprint_sha256": "f349a249aea8ad165d9ef1ed413e7ef31ba470eba9228d66a6c2538fd9d44532",
+      "line_hash_sha256": "87cb32352af3cb788a6c7425375b33e3a806c5583cb1bdaebb0bcd6aa02e854c",
+      "source": "full_history",
+      "classification": "TEST_FIXTURE",
+      "owner": "test-infrastructure",
+      "action": "exact_fingerprint_allowlist",
+      "evidence": "Deterministic value in a test-only source file, used to exercise validation, redaction, payment, OAuth, or moderation behavior; no production lookup path."
+    },
+    {
+      "finding_id": "HIST-006",
+      "rule_id": "generic-api-key",
+      "path": "backend/internal/handler/ops_error_logger_attribution_test.go",
+      "line": {
+        "start": 81,
+        "end": 81
+      },
+      "commit": "ddf063352a300a3be462cd2b92fe0a28207c2042",
+      "fingerprint": "ddf063352a300a3be462cd2b92fe0a28207c2042:backend/internal/handler/ops_error_logger_attribution_test.go:generic-api-key:81",
+      "value_fingerprint_sha256": "f349a249aea8ad165d9ef1ed413e7ef31ba470eba9228d66a6c2538fd9d44532",
+      "line_hash_sha256": "742ecf0640e603854d4dbe53b7af00e71d870ead428f063d1b56b32ea39db125",
+      "source": "full_history",
+      "classification": "TEST_FIXTURE",
+      "owner": "test-infrastructure",
+      "action": "exact_fingerprint_allowlist",
+      "evidence": "Deterministic value in a test-only source file, used to exercise validation, redaction, payment, OAuth, or moderation behavior; no production lookup path."
+    },
+    {
+      "finding_id": "HIST-007",
+      "rule_id": "generic-api-key",
+      "path": "backend/internal/handler/ops_error_logger_attribution_test.go",
+      "line": {
+        "start": 81,
+        "end": 81
+      },
+      "commit": "ddf063352a300a3be462cd2b92fe0a28207c2042",
+      "fingerprint": "ddf063352a300a3be462cd2b92fe0a28207c2042:backend/internal/handler/ops_error_logger_attribution_test.go:generic-api-key:81",
+      "value_fingerprint_sha256": "fad7820acb9bbf024bcedd4a9a51e6836ba5da0f311343893d6933b7dc470250",
+      "line_hash_sha256": "742ecf0640e603854d4dbe53b7af00e71d870ead428f063d1b56b32ea39db125",
+      "source": "full_history",
+      "classification": "TEST_FIXTURE",
+      "owner": "test-infrastructure",
+      "action": "exact_fingerprint_allowlist",
+      "evidence": "Deterministic value in a test-only source file, used to exercise validation, redaction, payment, OAuth, or moderation behavior; no production lookup path."
+    },
+    {
+      "finding_id": "HIST-008",
+      "rule_id": "generic-api-key",
+      "path": "backend/internal/service/gateway_context_management_test.go",
+      "line": {
+        "start": 94,
+        "end": 94
+      },
+      "commit": "ddf91e9a7f7f7c72160d5097ffe2211ee6c20930",
+      "fingerprint": "ddf91e9a7f7f7c72160d5097ffe2211ee6c20930:backend/internal/service/gateway_context_management_test.go:generic-api-key:94",
+      "value_fingerprint_sha256": "577ac1adb016904259eff7b7cb12a01d97cd591d34d9ebd20780f580d9a107d7",
+      "line_hash_sha256": "918fb1484c1ca4ec2082609673f32575b8d6883b466106fbceaedf6b9d0a083d",
+      "source": "full_history",
+      "classification": "FALSE_POSITIVE",
+      "owner": "test-infrastructure",
+      "action": "exact_fingerprint_allowlist",
+      "evidence": "Protocol feature/version token or model mapping string; it does not authenticate or authorize any request."
+    },
+    {
+      "finding_id": "HIST-009",
+      "rule_id": "generic-api-key",
+      "path": "backend/internal/service/gateway_context_management_test.go",
+      "line": {
+        "start": 517,
+        "end": 517
+      },
+      "commit": "ddf91e9a7f7f7c72160d5097ffe2211ee6c20930",
+      "fingerprint": "ddf91e9a7f7f7c72160d5097ffe2211ee6c20930:backend/internal/service/gateway_context_management_test.go:generic-api-key:517",
+      "value_fingerprint_sha256": "577ac1adb016904259eff7b7cb12a01d97cd591d34d9ebd20780f580d9a107d7",
+      "line_hash_sha256": "2d5f1c28efc18f307ebe9c018fe8e3b7bb29bca577b907ca32daf1a45c4e70d1",
+      "source": "full_history",
+      "classification": "FALSE_POSITIVE",
+      "owner": "test-infrastructure",
+      "action": "exact_fingerprint_allowlist",
+      "evidence": "Protocol feature/version token or model mapping string; it does not authenticate or authorize any request."
+    },
+    {
+      "finding_id": "HIST-010",
+      "rule_id": "generic-api-key",
+      "path": "backend/internal/handler/stream_error_event_test.go",
+      "line": {
+        "start": 107,
+        "end": 107
+      },
+      "commit": "5e5c2062bf436be34b5bb8dc5603c6ead9af45cc",
+      "fingerprint": "5e5c2062bf436be34b5bb8dc5603c6ead9af45cc:backend/internal/handler/stream_error_event_test.go:generic-api-key:107",
+      "value_fingerprint_sha256": "ad1624b658eaaedfa3dd3ef4c60e26445573c0369dcb1c555b258fa9092afb4c",
+      "line_hash_sha256": "13c86bf562c601fe592a65ad2b8788da1eeefdf15158f20f1170a5889b65ab01",
+      "source": "full_history",
+      "classification": "FALSE_POSITIVE",
+      "owner": "test-infrastructure",
+      "action": "exact_fingerprint_allowlist",
+      "evidence": "Request correlation UUID in a handler test; it has no authentication semantics."
+    },
+    {
+      "finding_id": "HIST-011",
+      "rule_id": "jwt",
+      "path": "backend/internal/service/content_moderation_test.go",
+      "line": {
+        "start": 304,
+        "end": 304
+      },
+      "commit": "0eca600ffaf6760e23930696cbd8b8497dab5576",
+      "fingerprint": "0eca600ffaf6760e23930696cbd8b8497dab5576:backend/internal/service/content_moderation_test.go:jwt:304",
+      "value_fingerprint_sha256": "0ed1bb8c4d701c6afffe128ccfd9f704e43da38bef281ca6f4df5fe17e80b00f",
+      "line_hash_sha256": "669ab30518e735d86352ce6bc75af021bfb7e8ce1b11fdb97d96d80592fbc416",
+      "source": "full_history",
+      "classification": "TEST_FIXTURE",
+      "owner": "test-infrastructure",
+      "action": "exact_fingerprint_allowlist",
+      "evidence": "Deterministic value in a test-only source file, used to exercise validation, redaction, payment, OAuth, or moderation behavior; no production lookup path."
+    },
+    {
+      "finding_id": "HIST-012",
+      "rule_id": "generic-api-key",
+      "path": "backend/internal/service/content_moderation_test.go",
+      "line": {
+        "start": 304,
+        "end": 304
+      },
+      "commit": "0eca600ffaf6760e23930696cbd8b8497dab5576",
+      "fingerprint": "0eca600ffaf6760e23930696cbd8b8497dab5576:backend/internal/service/content_moderation_test.go:generic-api-key:304",
+      "value_fingerprint_sha256": "4d67feca69c5bbeb4cb5f2678ae2dde8ecf1ca5e0a1ceb5a74e6b411a2ee15d4",
+      "line_hash_sha256": "669ab30518e735d86352ce6bc75af021bfb7e8ce1b11fdb97d96d80592fbc416",
+      "source": "full_history",
+      "classification": "TEST_FIXTURE",
+      "owner": "test-infrastructure",
+      "action": "exact_fingerprint_allowlist",
+      "evidence": "Deterministic value in a test-only source file, used to exercise validation, redaction, payment, OAuth, or moderation behavior; no production lookup path."
+    },
+    {
+      "finding_id": "HIST-013",
+      "rule_id": "jwt",
+      "path": "backend/internal/service/content_moderation_test.go",
+      "line": {
+        "start": 296,
+        "end": 296
+      },
+      "commit": "fff4a300c6ab0c0cc6fd394925f2811a0e17c882",
+      "fingerprint": "fff4a300c6ab0c0cc6fd394925f2811a0e17c882:backend/internal/service/content_moderation_test.go:jwt:296",
+      "value_fingerprint_sha256": "0ed1bb8c4d701c6afffe128ccfd9f704e43da38bef281ca6f4df5fe17e80b00f",
+      "line_hash_sha256": "b4db293e29f6fc0f20eac50bd7d4ea3f95263a54792a62883bdad3a1f8db1a13",
+      "source": "full_history",
+      "classification": "TEST_FIXTURE",
+      "owner": "test-infrastructure",
+      "action": "exact_fingerprint_allowlist",
+      "evidence": "Deterministic value in a test-only source file, used to exercise validation, redaction, payment, OAuth, or moderation behavior; no production lookup path."
+    },
+    {
+      "finding_id": "HIST-014",
+      "rule_id": "generic-api-key",
+      "path": "backend/internal/service/content_moderation_test.go",
+      "line": {
+        "start": 296,
+        "end": 296
+      },
+      "commit": "fff4a300c6ab0c0cc6fd394925f2811a0e17c882",
+      "fingerprint": "fff4a300c6ab0c0cc6fd394925f2811a0e17c882:backend/internal/service/content_moderation_test.go:generic-api-key:296",
+      "value_fingerprint_sha256": "4d67feca69c5bbeb4cb5f2678ae2dde8ecf1ca5e0a1ceb5a74e6b411a2ee15d4",
+      "line_hash_sha256": "b4db293e29f6fc0f20eac50bd7d4ea3f95263a54792a62883bdad3a1f8db1a13",
+      "source": "full_history",
+      "classification": "TEST_FIXTURE",
+      "owner": "test-infrastructure",
+      "action": "exact_fingerprint_allowlist",
+      "evidence": "Deterministic value in a test-only source file, used to exercise validation, redaction, payment, OAuth, or moderation behavior; no production lookup path."
+    },
+    {
+      "finding_id": "HIST-015",
+      "rule_id": "generic-api-key",
+      "path": "docs/ADMIN_PAYMENT_INTEGRATION_API.md",
+      "line": {
+        "start": 44,
+        "end": 44
+      },
+      "commit": "c6d25f69d533a50d66a341f5bd185e70d3ca386a",
+      "fingerprint": "c6d25f69d533a50d66a341f5bd185e70d3ca386a:docs/ADMIN_PAYMENT_INTEGRATION_API.md:generic-api-key:44",
+      "value_fingerprint_sha256": "a7b21557e491698d28b927db10adebef854375ee55ea522b47c71ef04d482162",
+      "line_hash_sha256": "9937f6c4827d10b534fbf73d026b04c05eac90d502d0f6ef321e32d432ff67bd",
+      "source": "full_history",
+      "classification": "DOCUMENTATION",
+      "owner": "documentation",
+      "action": "exact_fingerprint_allowlist",
+      "evidence": "Payment integration documentation uses deterministic sample order and idempotency identifiers; no authentication or signing material."
+    },
+    {
+      "finding_id": "HIST-016",
+      "rule_id": "generic-api-key",
+      "path": "docs/ADMIN_PAYMENT_INTEGRATION_API.md",
+      "line": {
+        "start": 57,
+        "end": 57
+      },
+      "commit": "c6d25f69d533a50d66a341f5bd185e70d3ca386a",
+      "fingerprint": "c6d25f69d533a50d66a341f5bd185e70d3ca386a:docs/ADMIN_PAYMENT_INTEGRATION_API.md:generic-api-key:57",
+      "value_fingerprint_sha256": "abea3f5bb180e35c041e7c2935e3a27cf6bda2cf1c71c10969238e5af4e017dc",
+      "line_hash_sha256": "ca8088400d0adb07690badd24d6e6b59a7c5d411d9dc6dececfbcf54361c418d",
+      "source": "full_history",
+      "classification": "DOCUMENTATION",
+      "owner": "documentation",
+      "action": "exact_fingerprint_allowlist",
+      "evidence": "Payment integration documentation uses deterministic sample order and idempotency identifiers; no authentication or signing material."
+    },
+    {
+      "finding_id": "HIST-017",
+      "rule_id": "generic-api-key",
+      "path": "docs/ADMIN_PAYMENT_INTEGRATION_API.md",
+      "line": {
+        "start": 64,
+        "end": 64
+      },
+      "commit": "c6d25f69d533a50d66a341f5bd185e70d3ca386a",
+      "fingerprint": "c6d25f69d533a50d66a341f5bd185e70d3ca386a:docs/ADMIN_PAYMENT_INTEGRATION_API.md:generic-api-key:64",
+      "value_fingerprint_sha256": "a7b21557e491698d28b927db10adebef854375ee55ea522b47c71ef04d482162",
+      "line_hash_sha256": "5cff1030b1089f3b748b391cdaec267d40b948c54ce99d1ebf8fd63edd155748",
+      "source": "full_history",
+      "classification": "DOCUMENTATION",
+      "owner": "documentation",
+      "action": "exact_fingerprint_allowlist",
+      "evidence": "Payment integration documentation uses deterministic sample order and idempotency identifiers; no authentication or signing material."
+    },
+    {
+      "finding_id": "HIST-018",
+      "rule_id": "generic-api-key",
+      "path": "docs/ADMIN_PAYMENT_INTEGRATION_API.md",
+      "line": {
+        "start": 164,
+        "end": 164
+      },
+      "commit": "c6d25f69d533a50d66a341f5bd185e70d3ca386a",
+      "fingerprint": "c6d25f69d533a50d66a341f5bd185e70d3ca386a:docs/ADMIN_PAYMENT_INTEGRATION_API.md:generic-api-key:164",
+      "value_fingerprint_sha256": "a7b21557e491698d28b927db10adebef854375ee55ea522b47c71ef04d482162",
+      "line_hash_sha256": "9937f6c4827d10b534fbf73d026b04c05eac90d502d0f6ef321e32d432ff67bd",
+      "source": "full_history",
+      "classification": "DOCUMENTATION",
+      "owner": "documentation",
+      "action": "exact_fingerprint_allowlist",
+      "evidence": "Payment integration documentation uses deterministic sample order and idempotency identifiers; no authentication or signing material."
+    },
+    {
+      "finding_id": "HIST-019",
+      "rule_id": "generic-api-key",
+      "path": "docs/ADMIN_PAYMENT_INTEGRATION_API.md",
+      "line": {
+        "start": 177,
+        "end": 177
+      },
+      "commit": "c6d25f69d533a50d66a341f5bd185e70d3ca386a",
+      "fingerprint": "c6d25f69d533a50d66a341f5bd185e70d3ca386a:docs/ADMIN_PAYMENT_INTEGRATION_API.md:generic-api-key:177",
+      "value_fingerprint_sha256": "abea3f5bb180e35c041e7c2935e3a27cf6bda2cf1c71c10969238e5af4e017dc",
+      "line_hash_sha256": "ca8088400d0adb07690badd24d6e6b59a7c5d411d9dc6dececfbcf54361c418d",
+      "source": "full_history",
+      "classification": "DOCUMENTATION",
+      "owner": "documentation",
+      "action": "exact_fingerprint_allowlist",
+      "evidence": "Payment integration documentation uses deterministic sample order and idempotency identifiers; no authentication or signing material."
+    },
+    {
+      "finding_id": "HIST-020",
+      "rule_id": "generic-api-key",
+      "path": "docs/ADMIN_PAYMENT_INTEGRATION_API.md",
+      "line": {
+        "start": 184,
+        "end": 184
+      },
+      "commit": "c6d25f69d533a50d66a341f5bd185e70d3ca386a",
+      "fingerprint": "c6d25f69d533a50d66a341f5bd185e70d3ca386a:docs/ADMIN_PAYMENT_INTEGRATION_API.md:generic-api-key:184",
+      "value_fingerprint_sha256": "a7b21557e491698d28b927db10adebef854375ee55ea522b47c71ef04d482162",
+      "line_hash_sha256": "5cff1030b1089f3b748b391cdaec267d40b948c54ce99d1ebf8fd63edd155748",
+      "source": "full_history",
+      "classification": "DOCUMENTATION",
+      "owner": "documentation",
+      "action": "exact_fingerprint_allowlist",
+      "evidence": "Payment integration documentation uses deterministic sample order and idempotency identifiers; no authentication or signing material."
+    },
+    {
+      "finding_id": "HIST-021",
+      "rule_id": "generic-api-key",
+      "path": "backend/internal/repository/migrations_runner_checksum_test.go",
+      "line": {
+        "start": 93,
+        "end": 94
+      },
+      "commit": "9de7a72cce6404adcd9b5d75e90aa550cc5b0bb2",
+      "fingerprint": "9de7a72cce6404adcd9b5d75e90aa550cc5b0bb2:backend/internal/repository/migrations_runner_checksum_test.go:generic-api-key:93",
+      "value_fingerprint_sha256": "c8fcb41e8c297fce34d0cb2cbabfdc42023e4b64c46724718d8653021fed6624",
+      "line_hash_sha256": "00bdf76c3c08ee875a38d0f6345e209152adbe687be3e0484562edc4d042d84e",
+      "source": "full_history",
+      "classification": "FALSE_POSITIVE",
+      "owner": "test-infrastructure",
+      "action": "exact_fingerprint_allowlist",
+      "evidence": "Migration filename/checksum fixture; it has no authentication semantics."
+    },
+    {
+      "finding_id": "HIST-022",
+      "rule_id": "generic-api-key",
+      "path": "backend/internal/handler/auth_wechat_oauth_test.go",
+      "line": {
+        "start": 439,
+        "end": 439
+      },
+      "commit": "1aab084ecb9ad1e92dce3f273d8dc73e11cb9f5c",
+      "fingerprint": "1aab084ecb9ad1e92dce3f273d8dc73e11cb9f5c:backend/internal/handler/auth_wechat_oauth_test.go:generic-api-key:439",
+      "value_fingerprint_sha256": "a8ae6e6ee929abea3afcfc5258c8ccd6f85273e0d4626d26c7279f3250f77c8e",
+      "line_hash_sha256": "96766d8fd352451e2001cef0e1c082df946a878a1ffe47c2777b7524c12f2e48",
+      "source": "full_history",
+      "classification": "TEST_FIXTURE",
+      "owner": "test-infrastructure",
+      "action": "exact_fingerprint_allowlist",
+      "evidence": "Deterministic value in a test-only source file, used to exercise validation, redaction, payment, OAuth, or moderation behavior; no production lookup path."
+    },
+    {
+      "finding_id": "HIST-023",
+      "rule_id": "generic-api-key",
+      "path": "backend/internal/handler/payment_handler_resume_test.go",
+      "line": {
+        "start": 168,
+        "end": 168
+      },
+      "commit": "d6a04bb772bee52a501c8d69cbf6a82a87afb1f4",
+      "fingerprint": "d6a04bb772bee52a501c8d69cbf6a82a87afb1f4:backend/internal/handler/payment_handler_resume_test.go:generic-api-key:168",
+      "value_fingerprint_sha256": "3eb1bd439947eb762998e566ccc2e099c791118b2f40579cc4f7da2b5061b7f9",
+      "line_hash_sha256": "29c80575d7d6b694d00b5f322370452ec12a051368bc670693983112761be4d8",
+      "source": "full_history",
+      "classification": "TEST_FIXTURE",
+      "owner": "test-infrastructure",
+      "action": "exact_fingerprint_allowlist",
+      "evidence": "Deterministic value in a test-only source file, used to exercise validation, redaction, payment, OAuth, or moderation behavior; no production lookup path."
+    },
+    {
+      "finding_id": "HIST-024",
+      "rule_id": "generic-api-key",
+      "path": "backend/internal/service/payment_order_result_test.go",
+      "line": {
+        "start": 95,
+        "end": 95
+      },
+      "commit": "d6a04bb772bee52a501c8d69cbf6a82a87afb1f4",
+      "fingerprint": "d6a04bb772bee52a501c8d69cbf6a82a87afb1f4:backend/internal/service/payment_order_result_test.go:generic-api-key:95",
+      "value_fingerprint_sha256": "3eb1bd439947eb762998e566ccc2e099c791118b2f40579cc4f7da2b5061b7f9",
+      "line_hash_sha256": "29c80575d7d6b694d00b5f322370452ec12a051368bc670693983112761be4d8",
+      "source": "full_history",
+      "classification": "TEST_FIXTURE",
+      "owner": "test-infrastructure",
+      "action": "exact_fingerprint_allowlist",
+      "evidence": "Deterministic value in a test-only source file, used to exercise validation, redaction, payment, OAuth, or moderation behavior; no production lookup path."
+    },
+    {
+      "finding_id": "HIST-025",
+      "rule_id": "generic-api-key",
+      "path": "backend/internal/handler/payment_handler_resume_test.go",
+      "line": {
+        "start": 255,
+        "end": 255
+      },
+      "commit": "d6a04bb772bee52a501c8d69cbf6a82a87afb1f4",
+      "fingerprint": "d6a04bb772bee52a501c8d69cbf6a82a87afb1f4:backend/internal/handler/payment_handler_resume_test.go:generic-api-key:255",
+      "value_fingerprint_sha256": "3eb1bd439947eb762998e566ccc2e099c791118b2f40579cc4f7da2b5061b7f9",
+      "line_hash_sha256": "29c80575d7d6b694d00b5f322370452ec12a051368bc670693983112761be4d8",
+      "source": "full_history",
+      "classification": "TEST_FIXTURE",
+      "owner": "test-infrastructure",
+      "action": "exact_fingerprint_allowlist",
+      "evidence": "Deterministic value in a test-only source file, used to exercise validation, redaction, payment, OAuth, or moderation behavior; no production lookup path."
+    },
+    {
+      "finding_id": "HIST-026",
+      "rule_id": "generic-api-key",
+      "path": "backend/internal/service/payment_order_jsapi_test.go",
+      "line": {
+        "start": 12,
+        "end": 12
+      },
+      "commit": "1d8432b8a4a3f2f6fde27ee0d5c01f00783a1c04",
+      "fingerprint": "1d8432b8a4a3f2f6fde27ee0d5c01f00783a1c04:backend/internal/service/payment_order_jsapi_test.go:generic-api-key:12",
+      "value_fingerprint_sha256": "3eb1bd439947eb762998e566ccc2e099c791118b2f40579cc4f7da2b5061b7f9",
+      "line_hash_sha256": "ce552845c93c9a0d578cdd316fb2caad0782d97853ec1fef8cbd80d94b2e2337",
+      "source": "full_history",
+      "classification": "TEST_FIXTURE",
+      "owner": "test-infrastructure",
+      "action": "exact_fingerprint_allowlist",
+      "evidence": "Deterministic value in a test-only source file, used to exercise validation, redaction, payment, OAuth, or moderation behavior; no production lookup path."
+    },
+    {
+      "finding_id": "HIST-027",
+      "rule_id": "generic-api-key",
+      "path": "backend/internal/handler/auth_wechat_oauth_test.go",
+      "line": {
+        "start": 201,
+        "end": 201
+      },
+      "commit": "55e8dd550a4a261ab4bdf26f865da2eab11dafd8",
+      "fingerprint": "55e8dd550a4a261ab4bdf26f865da2eab11dafd8:backend/internal/handler/auth_wechat_oauth_test.go:generic-api-key:201",
+      "value_fingerprint_sha256": "a8ae6e6ee929abea3afcfc5258c8ccd6f85273e0d4626d26c7279f3250f77c8e",
+      "line_hash_sha256": "62b4bbd3ab5113f19322b9bb028f414c9033797adb3d486aa5e195fd85bec77d",
+      "source": "full_history",
+      "classification": "TEST_FIXTURE",
+      "owner": "test-infrastructure",
+      "action": "exact_fingerprint_allowlist",
+      "evidence": "Deterministic value in a test-only source file, used to exercise validation, redaction, payment, OAuth, or moderation behavior; no production lookup path."
+    },
+    {
+      "finding_id": "HIST-028",
+      "rule_id": "generic-api-key",
+      "path": "backend/internal/payment/provider/wxpay_test.go",
+      "line": {
+        "start": 450,
+        "end": 450
+      },
+      "commit": "7ef7fd19e7ca0d46bc7bafa58a578a9b4d1a29ba",
+      "fingerprint": "7ef7fd19e7ca0d46bc7bafa58a578a9b4d1a29ba:backend/internal/payment/provider/wxpay_test.go:generic-api-key:450",
+      "value_fingerprint_sha256": "3fc6d1751a969fea49764515438a8a6a7ae064083aacce0c5709b222eb922438",
+      "line_hash_sha256": "252277a710e30589be565db7b32e1cdc7e7c8ef238955540314049cafe72304f",
+      "source": "full_history",
+      "classification": "TEST_FIXTURE",
+      "owner": "test-infrastructure",
+      "action": "exact_fingerprint_allowlist",
+      "evidence": "Deterministic value in a test-only source file, used to exercise validation, redaction, payment, OAuth, or moderation behavior; no production lookup path."
+    },
+    {
+      "finding_id": "HIST-029",
+      "rule_id": "generic-api-key",
+      "path": "backend/internal/service/payment_webhook_provider_test.go",
+      "line": {
+        "start": 16,
+        "end": 16
+      },
+      "commit": "bdcd3d87e530fc1bbbec4888a51ae79c1cb0e298",
+      "fingerprint": "bdcd3d87e530fc1bbbec4888a51ae79c1cb0e298:backend/internal/service/payment_webhook_provider_test.go:generic-api-key:16",
+      "value_fingerprint_sha256": "3eb1bd439947eb762998e566ccc2e099c791118b2f40579cc4f7da2b5061b7f9",
+      "line_hash_sha256": "aaab856e1af3feb9eef64bb45522badb7c1a01f970406833d982a4ea9e398f9a",
+      "source": "full_history",
+      "classification": "TEST_FIXTURE",
+      "owner": "test-infrastructure",
+      "action": "exact_fingerprint_allowlist",
+      "evidence": "Deterministic value in a test-only source file, used to exercise validation, redaction, payment, OAuth, or moderation behavior; no production lookup path."
+    },
+    {
+      "finding_id": "HIST-030",
+      "rule_id": "generic-api-key",
+      "path": "backend/internal/payment/provider/alipay_test.go",
+      "line": {
+        "start": 62,
+        "end": 62
+      },
+      "commit": "63d1860dc0063df3da020d0c638288af469ebb65",
+      "fingerprint": "63d1860dc0063df3da020d0c638288af469ebb65:backend/internal/payment/provider/alipay_test.go:generic-api-key:62",
+      "value_fingerprint_sha256": "5c3966c2104bb4887ab7266dc9896ac4946d8f377224d5a331b939881ef2876e",
+      "line_hash_sha256": "735d5da9e397b5234ffa8fb4c113030f0c3b17eb24962a4b0a4782dd8504fcc0",
+      "source": "full_history",
+      "classification": "TEST_FIXTURE",
+      "owner": "test-infrastructure",
+      "action": "exact_fingerprint_allowlist",
+      "evidence": "Deterministic value in a test-only source file, used to exercise validation, redaction, payment, OAuth, or moderation behavior; no production lookup path."
+    },
+    {
+      "finding_id": "HIST-031",
+      "rule_id": "private-key",
+      "path": "backend/internal/payment/provider/wxpay_test.go",
+      "line": {
+        "start": 120,
+        "end": 122
+      },
+      "commit": "63d1860dc0063df3da020d0c638288af469ebb65",
+      "fingerprint": "63d1860dc0063df3da020d0c638288af469ebb65:backend/internal/payment/provider/wxpay_test.go:private-key:120",
+      "value_fingerprint_sha256": "ad74ae185ab26dfbe29d435fc52ec30368faa6bd48004766f2983cb9708a3f99",
+      "line_hash_sha256": "e62496d86afd3de1c1b28135c945da27672bc42a340e171bcff3edc0a28199f3",
+      "source": "full_history",
+      "classification": "TEST_FIXTURE",
+      "owner": "test-infrastructure",
+      "action": "exact_fingerprint_allowlist",
+      "evidence": "Test-only malformed/truncated PEM fixture used to exercise parser and validation behavior; it is not usable key material."
+    },
+    {
+      "finding_id": "HIST-032",
+      "rule_id": "private-key",
+      "path": "backend/internal/payment/provider/wxpay_test.go",
+      "line": {
+        "start": 132,
+        "end": 134
+      },
+      "commit": "63d1860dc0063df3da020d0c638288af469ebb65",
+      "fingerprint": "63d1860dc0063df3da020d0c638288af469ebb65:backend/internal/payment/provider/wxpay_test.go:private-key:132",
+      "value_fingerprint_sha256": "bb7313ce255281a4b1f2f23a076a60cc852c43642bd852ffb4f758644208b08c",
+      "line_hash_sha256": "b658b0c2100e592e943e00399e06b336ed800ed45df94911b278c018ec97fa59",
+      "source": "full_history",
+      "classification": "TEST_FIXTURE",
+      "owner": "test-infrastructure",
+      "action": "exact_fingerprint_allowlist",
+      "evidence": "Test-only malformed/truncated PEM fixture used to exercise parser and validation behavior; it is not usable key material."
+    },
+    {
+      "finding_id": "HIST-033",
+      "rule_id": "generic-api-key",
+      "path": "backend/internal/handler/openai_gateway_handler_test.go",
+      "line": {
+        "start": 398,
+        "end": 398
+      },
+      "commit": "4de4823a65bccf199d1507af5dfd4a14655e8236",
+      "fingerprint": "4de4823a65bccf199d1507af5dfd4a14655e8236:backend/internal/handler/openai_gateway_handler_test.go:generic-api-key:398",
+      "value_fingerprint_sha256": "09d0ceca06974190cf3cc91ff46a5df72e81eda40b3e203c6cc223e89e06796e",
+      "line_hash_sha256": "640f342d3ae6d5fcd8b32d05d388e14842bf82aaadffd41b2c5d68023ccbfacf",
+      "source": "full_history",
+      "classification": "FALSE_POSITIVE",
+      "owner": "test-infrastructure",
+      "action": "exact_fingerprint_allowlist",
+      "evidence": "Model identifier asserted by a routing test; it has no authentication semantics."
+    },
+    {
+      "finding_id": "HIST-034",
+      "rule_id": "generic-api-key",
+      "path": "backend/internal/service/gateway_service_bedrock_beta_test.go",
+      "line": {
+        "start": 136,
+        "end": 136
+      },
+      "commit": "11f7b835229273e993d016c9f7190e29400d8256",
+      "fingerprint": "11f7b835229273e993d016c9f7190e29400d8256:backend/internal/service/gateway_service_bedrock_beta_test.go:generic-api-key:136",
+      "value_fingerprint_sha256": "577ac1adb016904259eff7b7cb12a01d97cd591d34d9ebd20780f580d9a107d7",
+      "line_hash_sha256": "bdea5b8581491c38a5ca0a7712722ca0ef645dba5c55626f798ebdd6ff2da83e",
+      "source": "full_history",
+      "classification": "FALSE_POSITIVE",
+      "owner": "test-infrastructure",
+      "action": "exact_fingerprint_allowlist",
+      "evidence": "Reviewed non-secret metadata."
+    },
+    {
+      "finding_id": "HIST-035",
+      "rule_id": "generic-api-key",
+      "path": "backend/internal/service/gateway_service_bedrock_beta_test.go",
+      "line": {
+        "start": 260,
+        "end": 260
+      },
+      "commit": "11f7b835229273e993d016c9f7190e29400d8256",
+      "fingerprint": "11f7b835229273e993d016c9f7190e29400d8256:backend/internal/service/gateway_service_bedrock_beta_test.go:generic-api-key:260",
+      "value_fingerprint_sha256": "577ac1adb016904259eff7b7cb12a01d97cd591d34d9ebd20780f580d9a107d7",
+      "line_hash_sha256": "c8cc82af4f1c447bc696ce7c24c55d334cc5b3da2660fe727d4a297b699fe808",
+      "source": "full_history",
+      "classification": "FALSE_POSITIVE",
+      "owner": "test-infrastructure",
+      "action": "exact_fingerprint_allowlist",
+      "evidence": "Reviewed non-secret metadata."
+    },
+    {
+      "finding_id": "HIST-036",
+      "rule_id": "generic-api-key",
+      "path": "backend/internal/service/gateway_beta_test.go",
+      "line": {
+        "start": 162,
+        "end": 162
+      },
+      "commit": "ebe6f418f38180b81b681fb0d008149ff5722923",
+      "fingerprint": "ebe6f418f38180b81b681fb0d008149ff5722923:backend/internal/service/gateway_beta_test.go:generic-api-key:162",
+      "value_fingerprint_sha256": "577ac1adb016904259eff7b7cb12a01d97cd591d34d9ebd20780f580d9a107d7",
+      "line_hash_sha256": "08e7b7cbd214dd638c22953cb6a0fda13019406ee9fbaab811ed350b183c7afc",
+      "source": "full_history",
+      "classification": "FALSE_POSITIVE",
+      "owner": "test-infrastructure",
+      "action": "exact_fingerprint_allowlist",
+      "evidence": "Protocol feature/version token or model mapping string; it does not authenticate or authorize any request."
+    },
+    {
+      "finding_id": "HIST-037",
+      "rule_id": "generic-api-key",
+      "path": "backend/internal/pkg/antigravity/oauth.go",
+      "line": {
+        "start": 56,
+        "end": 56
+      },
+      "commit": "0fe09f1d40b128d8effa6f145bb8ab62d64d2c6f",
+      "fingerprint": "0fe09f1d40b128d8effa6f145bb8ab62d64d2c6f:backend/internal/pkg/antigravity/oauth.go:generic-api-key:56",
+      "value_fingerprint_sha256": "1d2f041093fd95aa8995a038c711d50a7960da09a505381c09a745d6ad0ecc60",
+      "line_hash_sha256": "f4bb837383af2f447db4f06e629273c862525f910e531330f09952fa9d4b50d8",
+      "source": "full_history",
+      "classification": "PUBLIC_OAUTH_CLIENT_ID",
+      "owner": "upstream-oauth",
+      "action": "exact_fingerprint_allowlist",
+      "evidence": "Upstream installed/desktop OAuth public-client credential; not an access/refresh token or resource API key; Google installed-app guidance says embedded client secrets are not confidential."
+    },
+    {
+      "finding_id": "HIST-038",
+      "rule_id": "generic-api-key",
+      "path": "backend/internal/pkg/geminicli/constants.go",
+      "line": {
+        "start": 42,
+        "end": 42
+      },
+      "commit": "0fe09f1d40b128d8effa6f145bb8ab62d64d2c6f",
+      "fingerprint": "0fe09f1d40b128d8effa6f145bb8ab62d64d2c6f:backend/internal/pkg/geminicli/constants.go:generic-api-key:42",
+      "value_fingerprint_sha256": "6a5f78b8b99dd4025e41ba11bf54c304c6af29f924c5569cc7865b2428ce03a9",
+      "line_hash_sha256": "1f2dac39d5bf6f86a097809da3bfe89085648f184e25a984ddfea4fc6cc6053e",
+      "source": "full_history",
+      "classification": "PUBLIC_OAUTH_CLIENT_ID",
+      "owner": "upstream-oauth",
+      "action": "exact_fingerprint_allowlist",
+      "evidence": "Upstream installed/desktop OAuth public-client credential; not an access/refresh token or resource API key; Google installed-app guidance says embedded client secrets are not confidential."
+    },
+    {
+      "finding_id": "HIST-039",
+      "rule_id": "generic-api-key",
+      "path": "ADMIN_PAYMENT_INTEGRATION_API.md",
+      "line": {
+        "start": 45,
+        "end": 45
+      },
+      "commit": "bb9af2465ef23cd4dc638a069741a2da7eeb33d5",
+      "fingerprint": "bb9af2465ef23cd4dc638a069741a2da7eeb33d5:ADMIN_PAYMENT_INTEGRATION_API.md:generic-api-key:45",
+      "value_fingerprint_sha256": "a7b21557e491698d28b927db10adebef854375ee55ea522b47c71ef04d482162",
+      "line_hash_sha256": "9937f6c4827d10b534fbf73d026b04c05eac90d502d0f6ef321e32d432ff67bd",
+      "source": "full_history",
+      "classification": "DOCUMENTATION",
+      "owner": "documentation",
+      "action": "exact_fingerprint_allowlist",
+      "evidence": "Payment integration documentation uses deterministic sample order and idempotency identifiers; no authentication or signing material."
+    },
+    {
+      "finding_id": "HIST-040",
+      "rule_id": "generic-api-key",
+      "path": "ADMIN_PAYMENT_INTEGRATION_API.md",
+      "line": {
+        "start": 67,
+        "end": 67
+      },
+      "commit": "bb9af2465ef23cd4dc638a069741a2da7eeb33d5",
+      "fingerprint": "bb9af2465ef23cd4dc638a069741a2da7eeb33d5:ADMIN_PAYMENT_INTEGRATION_API.md:generic-api-key:67",
+      "value_fingerprint_sha256": "abea3f5bb180e35c041e7c2935e3a27cf6bda2cf1c71c10969238e5af4e017dc",
+      "line_hash_sha256": "ca8088400d0adb07690badd24d6e6b59a7c5d411d9dc6dececfbcf54361c418d",
+      "source": "full_history",
+      "classification": "DOCUMENTATION",
+      "owner": "documentation",
+      "action": "exact_fingerprint_allowlist",
+      "evidence": "Payment integration documentation uses deterministic sample order and idempotency identifiers; no authentication or signing material."
+    },
+    {
+      "finding_id": "HIST-041",
+      "rule_id": "generic-api-key",
+      "path": "ADMIN_PAYMENT_INTEGRATION_API.md",
+      "line": {
+        "start": 74,
+        "end": 74
+      },
+      "commit": "bb9af2465ef23cd4dc638a069741a2da7eeb33d5",
+      "fingerprint": "bb9af2465ef23cd4dc638a069741a2da7eeb33d5:ADMIN_PAYMENT_INTEGRATION_API.md:generic-api-key:74",
+      "value_fingerprint_sha256": "a7b21557e491698d28b927db10adebef854375ee55ea522b47c71ef04d482162",
+      "line_hash_sha256": "5cff1030b1089f3b748b391cdaec267d40b948c54ce99d1ebf8fd63edd155748",
+      "source": "full_history",
+      "classification": "DOCUMENTATION",
+      "owner": "documentation",
+      "action": "exact_fingerprint_allowlist",
+      "evidence": "Payment integration documentation uses deterministic sample order and idempotency identifiers; no authentication or signing material."
+    },
+    {
+      "finding_id": "HIST-042",
+      "rule_id": "generic-api-key",
+      "path": "ADMIN_PAYMENT_INTEGRATION_API.md",
+      "line": {
+        "start": 45,
+        "end": 45
+      },
+      "commit": "2e88e23002a58e176936923fe87cd9ee5af17a99",
+      "fingerprint": "2e88e23002a58e176936923fe87cd9ee5af17a99:ADMIN_PAYMENT_INTEGRATION_API.md:generic-api-key:45",
+      "value_fingerprint_sha256": "a7b21557e491698d28b927db10adebef854375ee55ea522b47c71ef04d482162",
+      "line_hash_sha256": "9937f6c4827d10b534fbf73d026b04c05eac90d502d0f6ef321e32d432ff67bd",
+      "source": "full_history",
+      "classification": "DOCUMENTATION",
+      "owner": "documentation",
+      "action": "exact_fingerprint_allowlist",
+      "evidence": "Payment integration documentation uses deterministic sample order and idempotency identifiers; no authentication or signing material."
+    },
+    {
+      "finding_id": "HIST-043",
+      "rule_id": "generic-api-key",
+      "path": "ADMIN_PAYMENT_INTEGRATION_API.md",
+      "line": {
+        "start": 67,
+        "end": 67
+      },
+      "commit": "2e88e23002a58e176936923fe87cd9ee5af17a99",
+      "fingerprint": "2e88e23002a58e176936923fe87cd9ee5af17a99:ADMIN_PAYMENT_INTEGRATION_API.md:generic-api-key:67",
+      "value_fingerprint_sha256": "abea3f5bb180e35c041e7c2935e3a27cf6bda2cf1c71c10969238e5af4e017dc",
+      "line_hash_sha256": "ca8088400d0adb07690badd24d6e6b59a7c5d411d9dc6dececfbcf54361c418d",
+      "source": "full_history",
+      "classification": "DOCUMENTATION",
+      "owner": "documentation",
+      "action": "exact_fingerprint_allowlist",
+      "evidence": "Payment integration documentation uses deterministic sample order and idempotency identifiers; no authentication or signing material."
+    },
+    {
+      "finding_id": "HIST-044",
+      "rule_id": "generic-api-key",
+      "path": "ADMIN_PAYMENT_INTEGRATION_API.md",
+      "line": {
+        "start": 74,
+        "end": 74
+      },
+      "commit": "2e88e23002a58e176936923fe87cd9ee5af17a99",
+      "fingerprint": "2e88e23002a58e176936923fe87cd9ee5af17a99:ADMIN_PAYMENT_INTEGRATION_API.md:generic-api-key:74",
+      "value_fingerprint_sha256": "a7b21557e491698d28b927db10adebef854375ee55ea522b47c71ef04d482162",
+      "line_hash_sha256": "5cff1030b1089f3b748b391cdaec267d40b948c54ce99d1ebf8fd63edd155748",
+      "source": "full_history",
+      "classification": "DOCUMENTATION",
+      "owner": "documentation",
+      "action": "exact_fingerprint_allowlist",
+      "evidence": "Payment integration documentation uses deterministic sample order and idempotency identifiers; no authentication or signing material."
+    },
+    {
+      "finding_id": "HIST-045",
+      "rule_id": "generic-api-key",
+      "path": "ADMIN_PAYMENT_INTEGRATION_API.md",
+      "line": {
+        "start": 45,
+        "end": 45
+      },
+      "commit": "49325a769ed20998505269cafcf81800669c12ce",
+      "fingerprint": "49325a769ed20998505269cafcf81800669c12ce:ADMIN_PAYMENT_INTEGRATION_API.md:generic-api-key:45",
+      "value_fingerprint_sha256": "a7b21557e491698d28b927db10adebef854375ee55ea522b47c71ef04d482162",
+      "line_hash_sha256": "9937f6c4827d10b534fbf73d026b04c05eac90d502d0f6ef321e32d432ff67bd",
+      "source": "full_history",
+      "classification": "DOCUMENTATION",
+      "owner": "documentation",
+      "action": "exact_fingerprint_allowlist",
+      "evidence": "Payment integration documentation uses deterministic sample order and idempotency identifiers; no authentication or signing material."
+    },
+    {
+      "finding_id": "HIST-046",
+      "rule_id": "generic-api-key",
+      "path": "ADMIN_PAYMENT_INTEGRATION_API.md",
+      "line": {
+        "start": 67,
+        "end": 67
+      },
+      "commit": "49325a769ed20998505269cafcf81800669c12ce",
+      "fingerprint": "49325a769ed20998505269cafcf81800669c12ce:ADMIN_PAYMENT_INTEGRATION_API.md:generic-api-key:67",
+      "value_fingerprint_sha256": "abea3f5bb180e35c041e7c2935e3a27cf6bda2cf1c71c10969238e5af4e017dc",
+      "line_hash_sha256": "ca8088400d0adb07690badd24d6e6b59a7c5d411d9dc6dececfbcf54361c418d",
+      "source": "full_history",
+      "classification": "DOCUMENTATION",
+      "owner": "documentation",
+      "action": "exact_fingerprint_allowlist",
+      "evidence": "Payment integration documentation uses deterministic sample order and idempotency identifiers; no authentication or signing material."
+    },
+    {
+      "finding_id": "HIST-047",
+      "rule_id": "generic-api-key",
+      "path": "ADMIN_PAYMENT_INTEGRATION_API.md",
+      "line": {
+        "start": 74,
+        "end": 74
+      },
+      "commit": "49325a769ed20998505269cafcf81800669c12ce",
+      "fingerprint": "49325a769ed20998505269cafcf81800669c12ce:ADMIN_PAYMENT_INTEGRATION_API.md:generic-api-key:74",
+      "value_fingerprint_sha256": "a7b21557e491698d28b927db10adebef854375ee55ea522b47c71ef04d482162",
+      "line_hash_sha256": "5cff1030b1089f3b748b391cdaec267d40b948c54ce99d1ebf8fd63edd155748",
+      "source": "full_history",
+      "classification": "DOCUMENTATION",
+      "owner": "documentation",
+      "action": "exact_fingerprint_allowlist",
+      "evidence": "Payment integration documentation uses deterministic sample order and idempotency identifiers; no authentication or signing material."
+    },
+    {
+      "finding_id": "HIST-048",
+      "rule_id": "generic-api-key",
+      "path": "ADMIN_PAYMENT_INTEGRATION_API.md",
+      "line": {
+        "start": 39,
+        "end": 39
+      },
+      "commit": "238d86f502936af8cd20223aa5274984677ba900",
+      "fingerprint": "238d86f502936af8cd20223aa5274984677ba900:ADMIN_PAYMENT_INTEGRATION_API.md:generic-api-key:39",
+      "value_fingerprint_sha256": "a7b21557e491698d28b927db10adebef854375ee55ea522b47c71ef04d482162",
+      "line_hash_sha256": "9937f6c4827d10b534fbf73d026b04c05eac90d502d0f6ef321e32d432ff67bd",
+      "source": "full_history",
+      "classification": "DOCUMENTATION",
+      "owner": "documentation",
+      "action": "exact_fingerprint_allowlist",
+      "evidence": "Payment integration documentation uses deterministic sample order and idempotency identifiers; no authentication or signing material."
+    },
+    {
+      "finding_id": "HIST-049",
+      "rule_id": "generic-api-key",
+      "path": "ADMIN_PAYMENT_INTEGRATION_API.md",
+      "line": {
+        "start": 61,
+        "end": 61
+      },
+      "commit": "238d86f502936af8cd20223aa5274984677ba900",
+      "fingerprint": "238d86f502936af8cd20223aa5274984677ba900:ADMIN_PAYMENT_INTEGRATION_API.md:generic-api-key:61",
+      "value_fingerprint_sha256": "abea3f5bb180e35c041e7c2935e3a27cf6bda2cf1c71c10969238e5af4e017dc",
+      "line_hash_sha256": "ca8088400d0adb07690badd24d6e6b59a7c5d411d9dc6dececfbcf54361c418d",
+      "source": "full_history",
+      "classification": "DOCUMENTATION",
+      "owner": "documentation",
+      "action": "exact_fingerprint_allowlist",
+      "evidence": "Payment integration documentation uses deterministic sample order and idempotency identifiers; no authentication or signing material."
+    },
+    {
+      "finding_id": "HIST-050",
+      "rule_id": "generic-api-key",
+      "path": "ADMIN_PAYMENT_INTEGRATION_API.md",
+      "line": {
+        "start": 68,
+        "end": 68
+      },
+      "commit": "238d86f502936af8cd20223aa5274984677ba900",
+      "fingerprint": "238d86f502936af8cd20223aa5274984677ba900:ADMIN_PAYMENT_INTEGRATION_API.md:generic-api-key:68",
+      "value_fingerprint_sha256": "a7b21557e491698d28b927db10adebef854375ee55ea522b47c71ef04d482162",
+      "line_hash_sha256": "5cff1030b1089f3b748b391cdaec267d40b948c54ce99d1ebf8fd63edd155748",
+      "source": "full_history",
+      "classification": "DOCUMENTATION",
+      "owner": "documentation",
+      "action": "exact_fingerprint_allowlist",
+      "evidence": "Payment integration documentation uses deterministic sample order and idempotency identifiers; no authentication or signing material."
+    },
+    {
+      "finding_id": "HIST-051",
+      "rule_id": "generic-api-key",
+      "path": "ADMIN_PAYMENT_INTEGRATION_API.md",
+      "line": {
+        "start": 39,
+        "end": 39
+      },
+      "commit": "39ca192c41ea8e040aee99b015b7761bec6964d1",
+      "fingerprint": "39ca192c41ea8e040aee99b015b7761bec6964d1:ADMIN_PAYMENT_INTEGRATION_API.md:generic-api-key:39",
+      "value_fingerprint_sha256": "a7b21557e491698d28b927db10adebef854375ee55ea522b47c71ef04d482162",
+      "line_hash_sha256": "9937f6c4827d10b534fbf73d026b04c05eac90d502d0f6ef321e32d432ff67bd",
+      "source": "full_history",
+      "classification": "DOCUMENTATION",
+      "owner": "documentation",
+      "action": "exact_fingerprint_allowlist",
+      "evidence": "Payment integration documentation uses deterministic sample order and idempotency identifiers; no authentication or signing material."
+    },
+    {
+      "finding_id": "HIST-052",
+      "rule_id": "generic-api-key",
+      "path": "ADMIN_PAYMENT_INTEGRATION_API.md",
+      "line": {
+        "start": 61,
+        "end": 61
+      },
+      "commit": "39ca192c41ea8e040aee99b015b7761bec6964d1",
+      "fingerprint": "39ca192c41ea8e040aee99b015b7761bec6964d1:ADMIN_PAYMENT_INTEGRATION_API.md:generic-api-key:61",
+      "value_fingerprint_sha256": "abea3f5bb180e35c041e7c2935e3a27cf6bda2cf1c71c10969238e5af4e017dc",
+      "line_hash_sha256": "ca8088400d0adb07690badd24d6e6b59a7c5d411d9dc6dececfbcf54361c418d",
+      "source": "full_history",
+      "classification": "DOCUMENTATION",
+      "owner": "documentation",
+      "action": "exact_fingerprint_allowlist",
+      "evidence": "Payment integration documentation uses deterministic sample order and idempotency identifiers; no authentication or signing material."
+    },
+    {
+      "finding_id": "HIST-053",
+      "rule_id": "generic-api-key",
+      "path": "ADMIN_PAYMENT_INTEGRATION_API.md",
+      "line": {
+        "start": 68,
+        "end": 68
+      },
+      "commit": "39ca192c41ea8e040aee99b015b7761bec6964d1",
+      "fingerprint": "39ca192c41ea8e040aee99b015b7761bec6964d1:ADMIN_PAYMENT_INTEGRATION_API.md:generic-api-key:68",
+      "value_fingerprint_sha256": "a7b21557e491698d28b927db10adebef854375ee55ea522b47c71ef04d482162",
+      "line_hash_sha256": "5cff1030b1089f3b748b391cdaec267d40b948c54ce99d1ebf8fd63edd155748",
+      "source": "full_history",
+      "classification": "DOCUMENTATION",
+      "owner": "documentation",
+      "action": "exact_fingerprint_allowlist",
+      "evidence": "Payment integration documentation uses deterministic sample order and idempotency identifiers; no authentication or signing material."
+    },
+    {
+      "finding_id": "HIST-054",
+      "rule_id": "generic-api-key",
+      "path": "backend/internal/service/domain_constants.go",
+      "line": {
+        "start": 182,
+        "end": 182
+      },
+      "commit": "bb664d9bbfe8fe004fdc47c55653c5c904a6bed1",
+      "fingerprint": "bb664d9bbfe8fe004fdc47c55653c5c904a6bed1:backend/internal/service/domain_constants.go:generic-api-key:182",
+      "value_fingerprint_sha256": "b3201986904b6d8c9959ad43e7afb72fcc96f4fac9a09333ec312ac2ad9ffc28",
+      "line_hash_sha256": "9909f865ce2b22d74d05fe787ddd6ba33f6f910e41a1df2a6b8c575e4768ff8f",
+      "source": "full_history",
+      "classification": "FALSE_POSITIVE",
+      "owner": "security",
+      "action": "exact_fingerprint_allowlist",
+      "evidence": "Configuration key name for an access-key setting; the detected value is the setting name, not a credential."
+    },
+    {
+      "finding_id": "HIST-055",
+      "rule_id": "generic-api-key",
+      "path": "backend/internal/service/gateway_beta_test.go",
+      "line": {
+        "start": 152,
+        "end": 152
+      },
+      "commit": "bb664d9bbfe8fe004fdc47c55653c5c904a6bed1",
+      "fingerprint": "bb664d9bbfe8fe004fdc47c55653c5c904a6bed1:backend/internal/service/gateway_beta_test.go:generic-api-key:152",
+      "value_fingerprint_sha256": "577ac1adb016904259eff7b7cb12a01d97cd591d34d9ebd20780f580d9a107d7",
+      "line_hash_sha256": "0b9b29b62f7c43dcda8a48862bf513558e658c8566f2097b813668d7d36f50ab",
+      "source": "full_history",
+      "classification": "FALSE_POSITIVE",
+      "owner": "test-infrastructure",
+      "action": "exact_fingerprint_allowlist",
+      "evidence": "Protocol feature/version token or model mapping string; it does not authenticate or authorize any request."
+    },
+    {
+      "finding_id": "HIST-056",
+      "rule_id": "generic-api-key",
+      "path": "backend/internal/service/gateway_beta_test.go",
+      "line": {
+        "start": 78,
+        "end": 78
+      },
+      "commit": "4ac57b4edf7f97fa9766b0a44d01731968e9ad02",
+      "fingerprint": "4ac57b4edf7f97fa9766b0a44d01731968e9ad02:backend/internal/service/gateway_beta_test.go:generic-api-key:78",
+      "value_fingerprint_sha256": "577ac1adb016904259eff7b7cb12a01d97cd591d34d9ebd20780f580d9a107d7",
+      "line_hash_sha256": "52589ec51f5789eb8d2075aa599efd2e103dc70c8625181c8c5c2a2e91c33ad9",
+      "source": "full_history",
+      "classification": "FALSE_POSITIVE",
+      "owner": "test-infrastructure",
+      "action": "exact_fingerprint_allowlist",
+      "evidence": "Protocol feature/version token or model mapping string; it does not authenticate or authorize any request."
+    },
+    {
+      "finding_id": "HIST-057",
+      "rule_id": "generic-api-key",
+      "path": "backend/internal/service/gateway_beta_test.go",
+      "line": {
+        "start": 80,
+        "end": 80
+      },
+      "commit": "4ac57b4edf7f97fa9766b0a44d01731968e9ad02",
+      "fingerprint": "4ac57b4edf7f97fa9766b0a44d01731968e9ad02:backend/internal/service/gateway_beta_test.go:generic-api-key:80",
+      "value_fingerprint_sha256": "577ac1adb016904259eff7b7cb12a01d97cd591d34d9ebd20780f580d9a107d7",
+      "line_hash_sha256": "e15acd861851b8ff2f25768759ba0cb54f90b7868a8e590d0197f05adc78c06a",
+      "source": "full_history",
+      "classification": "FALSE_POSITIVE",
+      "owner": "test-infrastructure",
+      "action": "exact_fingerprint_allowlist",
+      "evidence": "Protocol feature/version token or model mapping string; it does not authenticate or authorize any request."
+    },
+    {
+      "finding_id": "HIST-058",
+      "rule_id": "generic-api-key",
+      "path": "backend/internal/service/gateway_beta_test.go",
+      "line": {
+        "start": 86,
+        "end": 86
+      },
+      "commit": "4ac57b4edf7f97fa9766b0a44d01731968e9ad02",
+      "fingerprint": "4ac57b4edf7f97fa9766b0a44d01731968e9ad02:backend/internal/service/gateway_beta_test.go:generic-api-key:86",
+      "value_fingerprint_sha256": "577ac1adb016904259eff7b7cb12a01d97cd591d34d9ebd20780f580d9a107d7",
+      "line_hash_sha256": "e15acd861851b8ff2f25768759ba0cb54f90b7868a8e590d0197f05adc78c06a",
+      "source": "full_history",
+      "classification": "FALSE_POSITIVE",
+      "owner": "test-infrastructure",
+      "action": "exact_fingerprint_allowlist",
+      "evidence": "Protocol feature/version token or model mapping string; it does not authenticate or authorize any request."
+    },
+    {
+      "finding_id": "HIST-059",
+      "rule_id": "generic-api-key",
+      "path": "backend/internal/service/gateway_beta_test.go",
+      "line": {
+        "start": 92,
+        "end": 92
+      },
+      "commit": "4ac57b4edf7f97fa9766b0a44d01731968e9ad02",
+      "fingerprint": "4ac57b4edf7f97fa9766b0a44d01731968e9ad02:backend/internal/service/gateway_beta_test.go:generic-api-key:92",
+      "value_fingerprint_sha256": "577ac1adb016904259eff7b7cb12a01d97cd591d34d9ebd20780f580d9a107d7",
+      "line_hash_sha256": "e15acd861851b8ff2f25768759ba0cb54f90b7868a8e590d0197f05adc78c06a",
+      "source": "full_history",
+      "classification": "FALSE_POSITIVE",
+      "owner": "test-infrastructure",
+      "action": "exact_fingerprint_allowlist",
+      "evidence": "Protocol feature/version token or model mapping string; it does not authenticate or authorize any request."
+    },
+    {
+      "finding_id": "HIST-060",
+      "rule_id": "generic-api-key",
+      "path": "backend/internal/service/gateway_beta_test.go",
+      "line": {
+        "start": 115,
+        "end": 115
+      },
+      "commit": "4ac57b4edf7f97fa9766b0a44d01731968e9ad02",
+      "fingerprint": "4ac57b4edf7f97fa9766b0a44d01731968e9ad02:backend/internal/service/gateway_beta_test.go:generic-api-key:115",
+      "value_fingerprint_sha256": "577ac1adb016904259eff7b7cb12a01d97cd591d34d9ebd20780f580d9a107d7",
+      "line_hash_sha256": "3255d0bf81898faaa5d91490379d8f51805246bde4013a2701355debed91d588",
+      "source": "full_history",
+      "classification": "FALSE_POSITIVE",
+      "owner": "test-infrastructure",
+      "action": "exact_fingerprint_allowlist",
+      "evidence": "Protocol feature/version token or model mapping string; it does not authenticate or authorize any request."
+    },
+    {
+      "finding_id": "HIST-061",
+      "rule_id": "generic-api-key",
+      "path": "backend/internal/pkg/antigravity/oauth.go",
+      "line": {
+        "start": 58,
+        "end": 58
+      },
+      "commit": "36d2e6999b09b83c32ea0761961c329703666093",
+      "fingerprint": "36d2e6999b09b83c32ea0761961c329703666093:backend/internal/pkg/antigravity/oauth.go:generic-api-key:58",
+      "value_fingerprint_sha256": "1d2f041093fd95aa8995a038c711d50a7960da09a505381c09a745d6ad0ecc60",
+      "line_hash_sha256": "f4bb837383af2f447db4f06e629273c862525f910e531330f09952fa9d4b50d8",
+      "source": "full_history",
+      "classification": "PUBLIC_OAUTH_CLIENT_ID",
+      "owner": "upstream-oauth",
+      "action": "exact_fingerprint_allowlist",
+      "evidence": "Upstream installed/desktop OAuth public-client credential; not an access/refresh token or resource API key; Google installed-app guidance says embedded client secrets are not confidential."
+    },
+    {
+      "finding_id": "HIST-062",
+      "rule_id": "generic-api-key",
+      "path": "backend/internal/pkg/geminicli/constants.go",
+      "line": {
+        "start": 42,
+        "end": 42
+      },
+      "commit": "0dbea6ca5890e10a0389f9ea3758fd7a0c2910be",
+      "fingerprint": "0dbea6ca5890e10a0389f9ea3758fd7a0c2910be:backend/internal/pkg/geminicli/constants.go:generic-api-key:42",
+      "value_fingerprint_sha256": "6a5f78b8b99dd4025e41ba11bf54c304c6af29f924c5569cc7865b2428ce03a9",
+      "line_hash_sha256": "1f2dac39d5bf6f86a097809da3bfe89085648f184e25a984ddfea4fc6cc6053e",
+      "source": "full_history",
+      "classification": "PUBLIC_OAUTH_CLIENT_ID",
+      "owner": "upstream-oauth",
+      "action": "exact_fingerprint_allowlist",
+      "evidence": "Upstream installed/desktop OAuth public-client credential; not an access/refresh token or resource API key; Google installed-app guidance says embedded client secrets are not confidential."
+    },
+    {
+      "finding_id": "HIST-063",
+      "rule_id": "generic-api-key",
+      "path": "backend/internal/service/gateway_beta_test.go",
+      "line": {
+        "start": 36,
+        "end": 36
+      },
+      "commit": "074bd0dfdace3f523125e08609bc7c9ee3f6134d",
+      "fingerprint": "074bd0dfdace3f523125e08609bc7c9ee3f6134d:backend/internal/service/gateway_beta_test.go:generic-api-key:36",
+      "value_fingerprint_sha256": "577ac1adb016904259eff7b7cb12a01d97cd591d34d9ebd20780f580d9a107d7",
+      "line_hash_sha256": "e15acd861851b8ff2f25768759ba0cb54f90b7868a8e590d0197f05adc78c06a",
+      "source": "full_history",
+      "classification": "FALSE_POSITIVE",
+      "owner": "test-infrastructure",
+      "action": "exact_fingerprint_allowlist",
+      "evidence": "Protocol feature/version token or model mapping string; it does not authenticate or authorize any request."
+    },
+    {
+      "finding_id": "HIST-064",
+      "rule_id": "generic-api-key",
+      "path": "backend/internal/service/gateway_beta_test.go",
+      "line": {
+        "start": 40,
+        "end": 40
+      },
+      "commit": "074bd0dfdace3f523125e08609bc7c9ee3f6134d",
+      "fingerprint": "074bd0dfdace3f523125e08609bc7c9ee3f6134d:backend/internal/service/gateway_beta_test.go:generic-api-key:40",
+      "value_fingerprint_sha256": "577ac1adb016904259eff7b7cb12a01d97cd591d34d9ebd20780f580d9a107d7",
+      "line_hash_sha256": "b67dbc82db5647497da27d19e6065414ff42cec88e4b89b00b128f0bace081b4",
+      "source": "full_history",
+      "classification": "FALSE_POSITIVE",
+      "owner": "test-infrastructure",
+      "action": "exact_fingerprint_allowlist",
+      "evidence": "Protocol feature/version token or model mapping string; it does not authenticate or authorize any request."
+    },
+    {
+      "finding_id": "HIST-065",
+      "rule_id": "generic-api-key",
+      "path": "backend/internal/service/gateway_beta_test.go",
+      "line": {
+        "start": 42,
+        "end": 42
+      },
+      "commit": "074bd0dfdace3f523125e08609bc7c9ee3f6134d",
+      "fingerprint": "074bd0dfdace3f523125e08609bc7c9ee3f6134d:backend/internal/service/gateway_beta_test.go:generic-api-key:42",
+      "value_fingerprint_sha256": "577ac1adb016904259eff7b7cb12a01d97cd591d34d9ebd20780f580d9a107d7",
+      "line_hash_sha256": "e15acd861851b8ff2f25768759ba0cb54f90b7868a8e590d0197f05adc78c06a",
+      "source": "full_history",
+      "classification": "FALSE_POSITIVE",
+      "owner": "test-infrastructure",
+      "action": "exact_fingerprint_allowlist",
+      "evidence": "Protocol feature/version token or model mapping string; it does not authenticate or authorize any request."
+    },
+    {
+      "finding_id": "HIST-066",
+      "rule_id": "generic-api-key",
+      "path": "backend/internal/service/gateway_beta_test.go",
+      "line": {
+        "start": 48,
+        "end": 48
+      },
+      "commit": "074bd0dfdace3f523125e08609bc7c9ee3f6134d",
+      "fingerprint": "074bd0dfdace3f523125e08609bc7c9ee3f6134d:backend/internal/service/gateway_beta_test.go:generic-api-key:48",
+      "value_fingerprint_sha256": "577ac1adb016904259eff7b7cb12a01d97cd591d34d9ebd20780f580d9a107d7",
+      "line_hash_sha256": "e15acd861851b8ff2f25768759ba0cb54f90b7868a8e590d0197f05adc78c06a",
+      "source": "full_history",
+      "classification": "FALSE_POSITIVE",
+      "owner": "test-infrastructure",
+      "action": "exact_fingerprint_allowlist",
+      "evidence": "Protocol feature/version token or model mapping string; it does not authenticate or authorize any request."
+    },
+    {
+      "finding_id": "HIST-067",
+      "rule_id": "generic-api-key",
+      "path": "backend/internal/service/gateway_beta_test.go",
+      "line": {
+        "start": 52,
+        "end": 52
+      },
+      "commit": "074bd0dfdace3f523125e08609bc7c9ee3f6134d",
+      "fingerprint": "074bd0dfdace3f523125e08609bc7c9ee3f6134d:backend/internal/service/gateway_beta_test.go:generic-api-key:52",
+      "value_fingerprint_sha256": "577ac1adb016904259eff7b7cb12a01d97cd591d34d9ebd20780f580d9a107d7",
+      "line_hash_sha256": "52589ec51f5789eb8d2075aa599efd2e103dc70c8625181c8c5c2a2e91c33ad9",
+      "source": "full_history",
+      "classification": "FALSE_POSITIVE",
+      "owner": "test-infrastructure",
+      "action": "exact_fingerprint_allowlist",
+      "evidence": "Protocol feature/version token or model mapping string; it does not authenticate or authorize any request."
+    },
+    {
+      "finding_id": "HIST-068",
+      "rule_id": "generic-api-key",
+      "path": "backend/internal/service/gateway_beta_test.go",
+      "line": {
+        "start": 54,
+        "end": 54
+      },
+      "commit": "074bd0dfdace3f523125e08609bc7c9ee3f6134d",
+      "fingerprint": "074bd0dfdace3f523125e08609bc7c9ee3f6134d:backend/internal/service/gateway_beta_test.go:generic-api-key:54",
+      "value_fingerprint_sha256": "577ac1adb016904259eff7b7cb12a01d97cd591d34d9ebd20780f580d9a107d7",
+      "line_hash_sha256": "e15acd861851b8ff2f25768759ba0cb54f90b7868a8e590d0197f05adc78c06a",
+      "source": "full_history",
+      "classification": "FALSE_POSITIVE",
+      "owner": "test-infrastructure",
+      "action": "exact_fingerprint_allowlist",
+      "evidence": "Protocol feature/version token or model mapping string; it does not authenticate or authorize any request."
+    },
+    {
+      "finding_id": "HIST-069",
+      "rule_id": "generic-api-key",
+      "path": "backend/internal/service/gateway_beta_test.go",
+      "line": {
+        "start": 66,
+        "end": 66
+      },
+      "commit": "074bd0dfdace3f523125e08609bc7c9ee3f6134d",
+      "fingerprint": "074bd0dfdace3f523125e08609bc7c9ee3f6134d:backend/internal/service/gateway_beta_test.go:generic-api-key:66",
+      "value_fingerprint_sha256": "577ac1adb016904259eff7b7cb12a01d97cd591d34d9ebd20780f580d9a107d7",
+      "line_hash_sha256": "e15acd861851b8ff2f25768759ba0cb54f90b7868a8e590d0197f05adc78c06a",
+      "source": "full_history",
+      "classification": "FALSE_POSITIVE",
+      "owner": "test-infrastructure",
+      "action": "exact_fingerprint_allowlist",
+      "evidence": "Protocol feature/version token or model mapping string; it does not authenticate or authorize any request."
+    },
+    {
+      "finding_id": "HIST-070",
+      "rule_id": "generic-api-key",
+      "path": "backend/internal/service/gateway_beta_test.go",
+      "line": {
+        "start": 85,
+        "end": 85
+      },
+      "commit": "074bd0dfdace3f523125e08609bc7c9ee3f6134d",
+      "fingerprint": "074bd0dfdace3f523125e08609bc7c9ee3f6134d:backend/internal/service/gateway_beta_test.go:generic-api-key:85",
+      "value_fingerprint_sha256": "577ac1adb016904259eff7b7cb12a01d97cd591d34d9ebd20780f580d9a107d7",
+      "line_hash_sha256": "3255d0bf81898faaa5d91490379d8f51805246bde4013a2701355debed91d588",
+      "source": "full_history",
+      "classification": "FALSE_POSITIVE",
+      "owner": "test-infrastructure",
+      "action": "exact_fingerprint_allowlist",
+      "evidence": "Protocol feature/version token or model mapping string; it does not authenticate or authorize any request."
+    },
+    {
+      "finding_id": "HIST-071",
+      "rule_id": "generic-api-key",
+      "path": "stress_test_gemini_session.sh",
+      "line": {
+        "start": 7,
+        "end": 7
+      },
+      "commit": "c4d67154431c94aa04c7f3e8f2fadf48fbdeed20",
+      "fingerprint": "c4d67154431c94aa04c7f3e8f2fadf48fbdeed20:stress_test_gemini_session.sh:generic-api-key:7",
+      "value_fingerprint_sha256": "7733cf9341caf2a521c5868651eea66ede48be4166bb14089b5475ebc73163c2",
+      "line_hash_sha256": "003ac60b10beda4cc0819c1c2d28d0763429e78559d1049385263c41ed57f890",
+      "source": "full_history",
+      "classification": "TEST_FIXTURE",
+      "owner": "test-infrastructure",
+      "action": "exact_fingerprint_allowlist",
+      "evidence": "Test-only credential-shaped deterministic fixture (low-entropy, non-random structure); current E2E code requires environment injection and contains no embedded value."
+    },
+    {
+      "finding_id": "HIST-072",
+      "rule_id": "generic-api-key",
+      "path": "stress_test_gemini_session.sh",
+      "line": {
+        "start": 7,
+        "end": 7
+      },
+      "commit": "084e0adb349ab00908049c6c250fe3301e324ca2",
+      "fingerprint": "084e0adb349ab00908049c6c250fe3301e324ca2:stress_test_gemini_session.sh:generic-api-key:7",
+      "value_fingerprint_sha256": "7733cf9341caf2a521c5868651eea66ede48be4166bb14089b5475ebc73163c2",
+      "line_hash_sha256": "003ac60b10beda4cc0819c1c2d28d0763429e78559d1049385263c41ed57f890",
+      "source": "full_history",
+      "classification": "TEST_FIXTURE",
+      "owner": "test-infrastructure",
+      "action": "exact_fingerprint_allowlist",
+      "evidence": "Test-only credential-shaped deterministic fixture (low-entropy, non-random structure); current E2E code requires environment injection and contains no embedded value."
+    },
+    {
+      "finding_id": "HIST-073",
+      "rule_id": "generic-api-key",
+      "path": "backend/internal/util/logredact/redact_test.go",
+      "line": {
+        "start": 9,
+        "end": 9
+      },
+      "commit": "fc8a39e0f574b279e7eff0f8baa508a5c4ed57f4",
+      "fingerprint": "fc8a39e0f574b279e7eff0f8baa508a5c4ed57f4:backend/internal/util/logredact/redact_test.go:generic-api-key:9",
+      "value_fingerprint_sha256": "8c4b7a1d9e1714bdcffc155110e98ab8f34d1223d1d602f7f246072bdaaa3555",
+      "line_hash_sha256": "ada1e576c9f30f24f9ff572e6eb8430f3430c5c6593a1dfb63c612b9d204098b",
+      "source": "full_history",
+      "classification": "TEST_FIXTURE",
+      "owner": "test-infrastructure",
+      "action": "exact_fingerprint_allowlist",
+      "evidence": "Deterministic value in a test-only source file, used to exercise validation, redaction, payment, OAuth, or moderation behavior; no production lookup path."
+    },
+    {
+      "finding_id": "HIST-074",
+      "rule_id": "generic-api-key",
+      "path": "backend/internal/util/logredact/redact_test.go",
+      "line": {
+        "start": 23,
+        "end": 23
+      },
+      "commit": "fc8a39e0f574b279e7eff0f8baa508a5c4ed57f4",
+      "fingerprint": "fc8a39e0f574b279e7eff0f8baa508a5c4ed57f4:backend/internal/util/logredact/redact_test.go:generic-api-key:23",
+      "value_fingerprint_sha256": "8c4b7a1d9e1714bdcffc155110e98ab8f34d1223d1d602f7f246072bdaaa3555",
+      "line_hash_sha256": "86cf154189a73258fcd28bded984aababa28981704ae3996d27acb9afab6ad42",
+      "source": "full_history",
+      "classification": "TEST_FIXTURE",
+      "owner": "test-infrastructure",
+      "action": "exact_fingerprint_allowlist",
+      "evidence": "Deterministic value in a test-only source file, used to exercise validation, redaction, payment, OAuth, or moderation behavior; no production lookup path."
+    },
+    {
+      "finding_id": "HIST-075",
+      "rule_id": "generic-api-key",
+      "path": "backend/internal/service/sora_client.go",
+      "line": {
+        "start": 813,
+        "end": 813
+      },
+      "commit": "399dd78b2ac62e6b008a16da5564ba423e7f8bbd",
+      "fingerprint": "399dd78b2ac62e6b008a16da5564ba423e7f8bbd:backend/internal/service/sora_client.go:generic-api-key:813",
+      "value_fingerprint_sha256": "992ee717234ff9ba572711a9aaa7a113a92dcc5de3d782bb498a30fdce030388",
+      "line_hash_sha256": "c9dbc6120e60d67bb5f7b0ffbb2f6acaceae83022ab7587348d76f6ef94fdc25",
+      "source": "full_history",
+      "classification": "FALSE_POSITIVE",
+      "owner": "security",
+      "action": "exact_fingerprint_allowlist",
+      "evidence": "Deterministic internal error token derived from an error seed; it is not accepted for authentication."
+    },
+    {
+      "finding_id": "HIST-076",
+      "rule_id": "generic-api-key",
+      "path": "backend/internal/service/gateway_beta_test.go",
+      "line": {
+        "start": 11,
+        "end": 11
+      },
+      "commit": "4d40fb6b602a0469bbdaa56bd047493a9d712f32",
+      "fingerprint": "4d40fb6b602a0469bbdaa56bd047493a9d712f32:backend/internal/service/gateway_beta_test.go:generic-api-key:11",
+      "value_fingerprint_sha256": "577ac1adb016904259eff7b7cb12a01d97cd591d34d9ebd20780f580d9a107d7",
+      "line_hash_sha256": "a81a4d866eeb8b4db74c781f694812d695051d2f42d4f24a182a29e019fdc764",
+      "source": "full_history",
+      "classification": "FALSE_POSITIVE",
+      "owner": "test-infrastructure",
+      "action": "exact_fingerprint_allowlist",
+      "evidence": "Protocol feature/version token or model mapping string; it does not authenticate or authorize any request."
+    },
+    {
+      "finding_id": "HIST-077",
+      "rule_id": "generic-api-key",
+      "path": "backend/internal/service/gateway_beta_test.go",
+      "line": {
+        "start": 19,
+        "end": 19
+      },
+      "commit": "4d40fb6b602a0469bbdaa56bd047493a9d712f32",
+      "fingerprint": "4d40fb6b602a0469bbdaa56bd047493a9d712f32:backend/internal/service/gateway_beta_test.go:generic-api-key:19",
+      "value_fingerprint_sha256": "577ac1adb016904259eff7b7cb12a01d97cd591d34d9ebd20780f580d9a107d7",
+      "line_hash_sha256": "a81a4d866eeb8b4db74c781f694812d695051d2f42d4f24a182a29e019fdc764",
+      "source": "full_history",
+      "classification": "FALSE_POSITIVE",
+      "owner": "test-infrastructure",
+      "action": "exact_fingerprint_allowlist",
+      "evidence": "Protocol feature/version token or model mapping string; it does not authenticate or authorize any request."
+    },
+    {
+      "finding_id": "HIST-078",
+      "rule_id": "generic-api-key",
+      "path": "backend/internal/service/gateway_beta_test.go",
+      "line": {
+        "start": 22,
+        "end": 22
+      },
+      "commit": "4d40fb6b602a0469bbdaa56bd047493a9d712f32",
+      "fingerprint": "4d40fb6b602a0469bbdaa56bd047493a9d712f32:backend/internal/service/gateway_beta_test.go:generic-api-key:22",
+      "value_fingerprint_sha256": "577ac1adb016904259eff7b7cb12a01d97cd591d34d9ebd20780f580d9a107d7",
+      "line_hash_sha256": "603478e50a8a30ec9a1401f0f7a08d8f884575227aa04a32455a9688b221b37c",
+      "source": "full_history",
+      "classification": "FALSE_POSITIVE",
+      "owner": "test-infrastructure",
+      "action": "exact_fingerprint_allowlist",
+      "evidence": "Protocol feature/version token or model mapping string; it does not authenticate or authorize any request."
+    },
+    {
+      "finding_id": "HIST-079",
+      "rule_id": "generic-api-key",
+      "path": "backend/internal/repository/ops_repo_preagg.go",
+      "line": {
+        "start": 198,
+        "end": 200
+      },
+      "commit": "bb5303272b801611361fd317e6a28e2a052b4b9c",
+      "fingerprint": "bb5303272b801611361fd317e6a28e2a052b4b9c:backend/internal/repository/ops_repo_preagg.go:generic-api-key:198",
+      "value_fingerprint_sha256": "fef7476293ef0e8c7a91ad7b6a0a43358bcca4fa52fcb5581153903d5ace23e4",
+      "line_hash_sha256": "f49d28f56f7c187b73642785f54258bf9005e6adc6369750f7f624064bcfed56",
+      "source": "full_history",
+      "classification": "FALSE_POSITIVE",
+      "owner": "security",
+      "action": "exact_fingerprint_allowlist",
+      "evidence": "SQL metric column name containing the word token; it stores usage counts, not credentials."
+    },
+    {
+      "finding_id": "HIST-080",
+      "rule_id": "generic-api-key",
+      "path": "backend/internal/repository/ops_repo_preagg.go",
+      "line": {
+        "start": 306,
+        "end": 308
+      },
+      "commit": "bb5303272b801611361fd317e6a28e2a052b4b9c",
+      "fingerprint": "bb5303272b801611361fd317e6a28e2a052b4b9c:backend/internal/repository/ops_repo_preagg.go:generic-api-key:306",
+      "value_fingerprint_sha256": "fef7476293ef0e8c7a91ad7b6a0a43358bcca4fa52fcb5581153903d5ace23e4",
+      "line_hash_sha256": "f49d28f56f7c187b73642785f54258bf9005e6adc6369750f7f624064bcfed56",
+      "source": "full_history",
+      "classification": "FALSE_POSITIVE",
+      "owner": "security",
+      "action": "exact_fingerprint_allowlist",
+      "evidence": "SQL metric column name containing the word token; it stores usage counts, not credentials."
+    },
+    {
+      "finding_id": "HIST-081",
+      "rule_id": "generic-api-key",
+      "path": "config.yaml",
+      "line": {
+        "start": 351,
+        "end": 351
+      },
+      "commit": "3f0017d1f18c118fedc52e5ae0cd5b8c30a25dc3",
+      "fingerprint": "3f0017d1f18c118fedc52e5ae0cd5b8c30a25dc3:config.yaml:generic-api-key:351",
+      "value_fingerprint_sha256": "6a5f78b8b99dd4025e41ba11bf54c304c6af29f924c5569cc7865b2428ce03a9",
+      "line_hash_sha256": "b8a9b6b98f70548ed8434a8b4191af77d62d4116a0b4452b8427d920aee3300f",
+      "source": "full_history",
+      "classification": "PUBLIC_OAUTH_CLIENT_ID",
+      "owner": "upstream-oauth",
+      "action": "exact_fingerprint_allowlist",
+      "evidence": "Upstream installed/desktop OAuth public-client credential; not an access/refresh token or resource API key; Google installed-app guidance says embedded client secrets are not confidential."
+    },
+    {
+      "finding_id": "HIST-082",
+      "rule_id": "generic-api-key",
+      "path": "backend/internal/pkg/antigravity/oauth.go",
+      "line": {
+        "start": 23,
+        "end": 23
+      },
+      "commit": "6648e6506c2b5eadc64c4041f83a893c21bbbf80",
+      "fingerprint": "6648e6506c2b5eadc64c4041f83a893c21bbbf80:backend/internal/pkg/antigravity/oauth.go:generic-api-key:23",
+      "value_fingerprint_sha256": "1d2f041093fd95aa8995a038c711d50a7960da09a505381c09a745d6ad0ecc60",
+      "line_hash_sha256": "0274b7832c4eed5cf605110d57f33f42eb96d62241f0163aa657e4d4fea24399",
+      "source": "full_history",
+      "classification": "PUBLIC_OAUTH_CLIENT_ID",
+      "owner": "upstream-oauth",
+      "action": "exact_fingerprint_allowlist",
+      "evidence": "Upstream installed/desktop OAuth public-client credential; not an access/refresh token or resource API key; Google installed-app guidance says embedded client secrets are not confidential."
+    },
+    {
+      "finding_id": "HIST-083",
+      "rule_id": "generic-api-key",
+      "path": "backend/internal/integration/e2e_gateway_test.go",
+      "line": {
+        "start": 18,
+        "end": 18
+      },
+      "commit": "9594c9c83a056c33e497e1251a5f15c7b56057a4",
+      "fingerprint": "9594c9c83a056c33e497e1251a5f15c7b56057a4:backend/internal/integration/e2e_gateway_test.go:generic-api-key:18",
+      "value_fingerprint_sha256": "77193dd07506664756554f93451338fb15f2491a0a408d20c4ad478bc912674a",
+      "line_hash_sha256": "2aeaf51502c7f8a791972f94e9492a7cca10d5e986d239923c076f5671518db7",
+      "source": "full_history",
+      "classification": "TEST_FIXTURE",
+      "owner": "test-infrastructure",
+      "action": "exact_fingerprint_allowlist",
+      "evidence": "Test-only credential-shaped deterministic fixture (low-entropy, non-random structure); current E2E code requires environment injection and contains no embedded value."
+    },
+    {
+      "finding_id": "HIST-084",
+      "rule_id": "generic-api-key",
+      "path": "backend/internal/integration/e2e_gateway_test.go",
+      "line": {
+        "start": 19,
+        "end": 19
+      },
+      "commit": "9594c9c83a056c33e497e1251a5f15c7b56057a4",
+      "fingerprint": "9594c9c83a056c33e497e1251a5f15c7b56057a4:backend/internal/integration/e2e_gateway_test.go:generic-api-key:19",
+      "value_fingerprint_sha256": "96c4ff9e0b4a0231b2f216edf2c5464ce2d3dae58617d97aa12c3fce6432e9d7",
+      "line_hash_sha256": "14bfb3a047e5bbd41b6652c4903a415681ab48e9d6e94a6edefec1e5f3c51064",
+      "source": "full_history",
+      "classification": "TEST_FIXTURE",
+      "owner": "test-infrastructure",
+      "action": "exact_fingerprint_allowlist",
+      "evidence": "Test-only credential-shaped deterministic fixture (low-entropy, non-random structure); current E2E code requires environment injection and contains no embedded value."
+    },
+    {
+      "finding_id": "HIST-085",
+      "rule_id": "generic-api-key",
+      "path": "backend/internal/pkg/geminicli/constants.go",
+      "line": {
+        "start": 36,
+        "end": 36
+      },
+      "commit": "eea949853a751e78b563c4623a7c0e61b7322726",
+      "fingerprint": "eea949853a751e78b563c4623a7c0e61b7322726:backend/internal/pkg/geminicli/constants.go:generic-api-key:36",
+      "value_fingerprint_sha256": "6a5f78b8b99dd4025e41ba11bf54c304c6af29f924c5569cc7865b2428ce03a9",
+      "line_hash_sha256": "1f2dac39d5bf6f86a097809da3bfe89085648f184e25a984ddfea4fc6cc6053e",
+      "source": "full_history",
+      "classification": "PUBLIC_OAUTH_CLIENT_ID",
+      "owner": "upstream-oauth",
+      "action": "exact_fingerprint_allowlist",
+      "evidence": "Upstream installed/desktop OAuth public-client credential; not an access/refresh token or resource API key; Google installed-app guidance says embedded client secrets are not confidential."
+    },
+    {
+      "finding_id": "HIST-086",
+      "rule_id": "generic-api-key",
+      "path": "deploy/config.example.yaml",
+      "line": {
+        "start": 107,
+        "end": 107
+      },
+      "commit": "79d15852504fd7fd64924a5efe51edf21c688b19",
+      "fingerprint": "79d15852504fd7fd64924a5efe51edf21c688b19:deploy/config.example.yaml:generic-api-key:107",
+      "value_fingerprint_sha256": "6a5f78b8b99dd4025e41ba11bf54c304c6af29f924c5569cc7865b2428ce03a9",
+      "line_hash_sha256": "b8a9b6b98f70548ed8434a8b4191af77d62d4116a0b4452b8427d920aee3300f",
+      "source": "full_history",
+      "classification": "PUBLIC_OAUTH_CLIENT_ID",
+      "owner": "upstream-oauth",
+      "action": "exact_fingerprint_allowlist",
+      "evidence": "Upstream installed/desktop OAuth public-client credential; not an access/refresh token or resource API key; Google installed-app guidance says embedded client secrets are not confidential."
+    },
+    {
+      "finding_id": "HIST-087",
+      "rule_id": "generic-api-key",
+      "path": "deploy/.env.example",
+      "line": {
+        "start": 78,
+        "end": 78
+      },
+      "commit": "79d15852504fd7fd64924a5efe51edf21c688b19",
+      "fingerprint": "79d15852504fd7fd64924a5efe51edf21c688b19:deploy/.env.example:generic-api-key:78",
+      "value_fingerprint_sha256": "6a5f78b8b99dd4025e41ba11bf54c304c6af29f924c5569cc7865b2428ce03a9",
+      "line_hash_sha256": "a3b330d39c165819962b7c3f754dd26b38f8590d538bb0fb70fff0b3e8b98fa1",
+      "source": "full_history",
+      "classification": "PUBLIC_OAUTH_CLIENT_ID",
+      "owner": "upstream-oauth",
+      "action": "exact_fingerprint_allowlist",
+      "evidence": "Upstream installed/desktop OAuth public-client credential; not an access/refresh token or resource API key; Google installed-app guidance says embedded client secrets are not confidential."
+    },
+    {
+      "finding_id": "HIST-088",
+      "rule_id": "generic-api-key",
+      "path": "backend/config.yaml",
+      "line": {
+        "start": 10,
+        "end": 10
+      },
+      "commit": "642842c29ee718f4926ead2619bd58ec2286c3aa",
+      "fingerprint": "642842c29ee718f4926ead2619bd58ec2286c3aa:backend/config.yaml:generic-api-key:10",
+      "value_fingerprint_sha256": "2ee53e2aae2323564a9b2f63fb4facbc894494b44b65ec25c1d85a2d98f747e5",
+      "line_hash_sha256": "94940efa61317286bda01e43be3dcb936801b3d8f007fc80cf9a694b09a68347",
+      "source": "full_history",
+      "classification": "EXAMPLE",
+      "owner": "security",
+      "action": "exact_fingerprint_allowlist",
+      "evidence": "Initial debug configuration targeted loopback PostgreSQL, was removed from the tree, and is retained only as historical local-development example data."
+    },
+    {
+      "finding_id": "HIST-089",
+      "rule_id": "generic-api-key",
+      "path": "backend/internal/service/gateway_service.go",
+      "line": {
+        "start": 629,
+        "end": 629
+      },
+      "commit": "642842c29ee718f4926ead2619bd58ec2286c3aa",
+      "fingerprint": "642842c29ee718f4926ead2619bd58ec2286c3aa:backend/internal/service/gateway_service.go:generic-api-key:629",
+      "value_fingerprint_sha256": "577ac1adb016904259eff7b7cb12a01d97cd591d34d9ebd20780f580d9a107d7",
+      "line_hash_sha256": "892a943da9a817af159aa1a396b3b365dd9c1e09a2523291555d5fe31f2eaf42",
+      "source": "full_history",
+      "classification": "FALSE_POSITIVE",
+      "owner": "security",
+      "action": "exact_fingerprint_allowlist",
+      "evidence": "Protocol feature/version token or model mapping string; it does not authenticate or authorize any request."
+    }
+  ]
+}
