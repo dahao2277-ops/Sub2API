@@ -193,6 +193,8 @@ def run() -> dict[str, object]:
             "run",
             "--rm",
             "--no-deps",
+            "--entrypoint",
+            "/app/ai16t-secret-provider",
             "--user",
             "0:0",
             "-e",
