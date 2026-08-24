@@ -117,6 +117,23 @@ class ProviderSpendGate:
                 """CREATE INDEX IF NOT EXISTS idx_canary_budget_active_user
                 ON canary_budget_reservations(user_id,status)"""
             )
+            connection.execute(
+                """CREATE TABLE IF NOT EXISTS canary_budget_policy_state(
+                singleton INTEGER PRIMARY KEY CHECK(singleton=1),
+                activated_at TEXT NOT NULL,
+                request_id_watermark INTEGER NOT NULL CHECK(request_id_watermark >= 0))"""
+            )
+            # The Key B / first-customer budget is a new policy epoch. Existing
+            # APIYI audit records remain immutable and continue to count in the
+            # Ledger, but pre-epoch test anomalies must not permanently prevent
+            # this independently capped Canary from starting. INSERT OR IGNORE
+            # makes the activation watermark durable across process restarts.
+            connection.execute(
+                """INSERT OR IGNORE INTO canary_budget_policy_state(
+                singleton,activated_at,request_id_watermark)
+                SELECT 1,strftime('%Y-%m-%dT%H:%M:%fZ','now'),COALESCE(MAX(id),0)
+                FROM requests"""
+            )
 
     @staticmethod
     def _day_start_utc() -> str:
@@ -135,6 +152,19 @@ class ProviderSpendGate:
             raise ValueError("authoritative request ID and user ID are required")
         owner_token = secrets.token_hex(32)
         with self.database.transaction() as connection:
+            policy = connection.execute(
+                """SELECT activated_at,request_id_watermark
+                FROM canary_budget_policy_state
+                WHERE singleton=1"""
+            ).fetchone()
+            if (
+                policy is None
+                or not str(policy["activated_at"])
+                or not isinstance(policy["request_id_watermark"], int)
+                or int(policy["request_id_watermark"]) < 0
+            ):
+                raise CanaryBudgetExceeded("first-customer policy activation is unavailable")
+            request_id_watermark = int(policy["request_id_watermark"])
             safe_placeholders = ",".join("?" for _ in SAFE_TERMINAL_STATUSES)
             connection.execute(
                 f"""UPDATE canary_budget_reservations AS reservations
@@ -169,12 +199,13 @@ class ProviderSpendGate:
             orphan = connection.execute(
                 f"""SELECT request_id FROM requests
                 WHERE provider='apiyi' AND status IN ({unresolved_placeholders})
+                  AND id > ?
                   AND NOT EXISTS(
                     SELECT 1 FROM canary_budget_reservations reservations
                     WHERE reservations.request_id=requests.request_id
                       AND reservations.status='ACTIVE')
                 LIMIT 1""",
-                tuple(sorted(UNRESOLVED_STATUSES)),
+                (*tuple(sorted(UNRESOLVED_STATUSES)), request_id_watermark),
             ).fetchone()
             if orphan is not None:
                 raise CanaryBudgetExceeded("unreserved unresolved provider request exists")
@@ -183,7 +214,9 @@ class ProviderSpendGate:
                 connection.execute(
                     """SELECT COALESCE(SUM(CASE WHEN supplier_total_cost > 0
                     THEN supplier_total_cost ELSE 0 END),0) value FROM requests
-                    WHERE provider='apiyi'"""
+                    WHERE provider='apiyi'
+                      AND id > ?""",
+                    (request_id_watermark,),
                 ).fetchone()
             )
             provider_reserved = self._value(
@@ -197,8 +230,9 @@ class ProviderSpendGate:
                     """SELECT COALESCE(SUM(CASE WHEN customer_total_charge > 0
                     THEN customer_total_charge ELSE 0 END),0) value FROM requests
                     WHERE provider='apiyi' AND user_id=?
+                      AND id > ?
                       AND julianday(created_at) >= julianday(?)""",
-                    (user_id, self._day_start_utc()),
+                    (user_id, request_id_watermark, self._day_start_utc()),
                 ).fetchone()
             )
             daily_reserved = self._value(

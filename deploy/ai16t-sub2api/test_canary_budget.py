@@ -23,7 +23,8 @@ class _Database:
         with self.transaction() as connection:
             connection.execute(
                 """CREATE TABLE requests(
-                request_id TEXT PRIMARY KEY,
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                request_id TEXT UNIQUE NOT NULL,
                 user_id INTEGER NOT NULL,
                 provider TEXT NOT NULL DEFAULT 'apiyi',
                 status TEXT NOT NULL,
@@ -169,6 +170,67 @@ class ProviderSpendGateTests(unittest.TestCase):
         self._insert_request("legacy", status="PROCESSING")
         with self.assertRaises(CanaryBudgetExceeded):
             self.gate.admit("new", 11)
+
+    def test_pre_activation_anomaly_is_preserved_without_blocking_new_policy_epoch(self) -> None:
+        database = _Database(Path(self.temporary.name) / "historical-ledger.sqlite3")
+        with database.transaction() as connection:
+            connection.execute(
+                """INSERT INTO requests(
+                request_id,user_id,status,supplier_total_cost,customer_total_charge,created_at
+                ) VALUES (?,?,?,?,?,?)""",
+                (
+                    "historical-anomaly",
+                    11,
+                    "FINANCIAL_ANOMALY",
+                    900_000,
+                    0,
+                    "2026-08-24T01:00:00.000Z",
+                ),
+            )
+
+        gate = ProviderSpendGate(
+            database,
+            limit_micro=1_000_000,
+            daily_limit_micro=1_000_000,
+            reserve_micro=250_000,
+        )
+        reservation = gate.admit("first-key-b-request", 11)
+        self.assertTrue(reservation.reserved)
+        with database.read() as connection:
+            historical = connection.execute(
+                "SELECT status FROM requests WHERE request_id=?",
+                ("historical-anomaly",),
+            ).fetchone()
+            activation = connection.execute(
+                """SELECT activated_at,request_id_watermark
+                FROM canary_budget_policy_state WHERE singleton=1"""
+            ).fetchone()
+        self.assertEqual(str(historical["status"]), "FINANCIAL_ANOMALY")
+        self.assertTrue(str(activation["activated_at"]))
+        self.assertGreaterEqual(int(activation["request_id_watermark"]), 1)
+
+        restarted = ProviderSpendGate(
+            database,
+            limit_micro=1_000_000,
+            daily_limit_micro=1_000_000,
+            reserve_micro=250_000,
+        )
+        with database.transaction() as connection:
+            connection.execute(
+                """INSERT INTO requests(
+                request_id,user_id,status,supplier_total_cost,customer_total_charge,created_at
+                ) VALUES (?,?,?,?,?,?)""",
+                (
+                    "new-anomaly",
+                    11,
+                    "FINANCIAL_ANOMALY",
+                    1,
+                    0,
+                    "2000-01-01T00:00:00.000Z",
+                ),
+            )
+        with self.assertRaises(CanaryBudgetExceeded):
+            restarted.admit("blocked-after-new-anomaly", 11)
 
     def test_old_owner_cannot_release_reservation(self) -> None:
         reservation = self.gate.admit("owned", 11)
