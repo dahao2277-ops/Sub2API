@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import sqlite3
 import tempfile
 import threading
@@ -10,8 +11,11 @@ from pathlib import Path
 from canary_budget import (
     CanaryBudgetExceeded,
     MAX_CANARY_INPUT_BYTES,
+    POLICY_EPOCH_ADVANCE_ACK,
     ProviderSpendGate,
     StreamBudgetSession,
+    advance_canary_policy_epoch,
+    canary_policy_audit_sha256,
     enforce_canary_input_ceiling,
     maximum_request_provider_cost_micro,
 )
@@ -27,10 +31,63 @@ class _Database:
                 request_id TEXT UNIQUE NOT NULL,
                 user_id INTEGER NOT NULL,
                 provider TEXT NOT NULL DEFAULT 'apiyi',
+                model TEXT NOT NULL DEFAULT 'deepseek-chat',
                 status TEXT NOT NULL,
+                error_code TEXT,
+                financial_alert INTEGER NOT NULL DEFAULT 0,
+                supplier_id TEXT,
+                price_version_id INTEGER,
+                supplier_cost_version_id INTEGER,
+                input_tokens INTEGER NOT NULL DEFAULT 0,
+                output_tokens INTEGER NOT NULL DEFAULT 0,
+                cached_tokens INTEGER NOT NULL DEFAULT 0,
+                total_tokens INTEGER NOT NULL DEFAULT 0,
                 supplier_total_cost INTEGER NOT NULL DEFAULT 0,
                 customer_total_charge INTEGER NOT NULL DEFAULT 0,
+                gross_profit INTEGER NOT NULL DEFAULT 0,
+                gross_margin_ppm INTEGER NOT NULL DEFAULT 0,
+                profit_status TEXT NOT NULL DEFAULT 'FINAL',
+                fallback_count INTEGER NOT NULL DEFAULT 0,
                 created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)"""
+            )
+            connection.execute(
+                """CREATE TABLE financial_alerts(
+                id INTEGER PRIMARY KEY AUTOINCREMENT,request_id TEXT NOT NULL,
+                code TEXT NOT NULL,metadata_json TEXT NOT NULL)"""
+            )
+            connection.execute(
+                """CREATE TABLE price_versions(
+                id INTEGER PRIMARY KEY,provider TEXT NOT NULL,model TEXT NOT NULL,
+                input_per_million_micro INTEGER NOT NULL,
+                output_per_million_micro INTEGER NOT NULL,
+                cached_per_million_micro INTEGER NOT NULL,currency TEXT NOT NULL)"""
+            )
+            connection.execute(
+                """CREATE TABLE supplier_cost_versions(
+                id INTEGER PRIMARY KEY,supplier_id TEXT NOT NULL,provider TEXT NOT NULL,
+                model TEXT NOT NULL,input_per_million_micro INTEGER NOT NULL,
+                output_per_million_micro INTEGER NOT NULL,
+                cached_per_million_micro INTEGER NOT NULL,currency TEXT NOT NULL)"""
+            )
+            connection.execute(
+                """CREATE TABLE provider_attempts(
+                id INTEGER PRIMARY KEY AUTOINCREMENT,request_id TEXT NOT NULL,
+                attempt_number INTEGER NOT NULL,supplier_id TEXT NOT NULL,
+                supplier_cost_version_id INTEGER NOT NULL,status TEXT NOT NULL,
+                error_code TEXT,usage_source TEXT NOT NULL,input_tokens INTEGER,
+                output_tokens INTEGER,cached_tokens INTEGER,cost_micro INTEGER,
+                billing_status TEXT NOT NULL)"""
+            )
+            connection.execute(
+                """CREATE TABLE ledger_entries(
+                id INTEGER PRIMARY KEY AUTOINCREMENT,request_id TEXT NOT NULL,
+                attempt_id INTEGER,transaction_type TEXT NOT NULL,amount_micro INTEGER NOT NULL,
+                input_tokens INTEGER NOT NULL DEFAULT 0,output_tokens INTEGER NOT NULL DEFAULT 0,
+                cached_tokens INTEGER NOT NULL DEFAULT 0,total_tokens INTEGER NOT NULL DEFAULT 0,
+                cost_micro INTEGER NOT NULL DEFAULT 0,revenue_micro INTEGER NOT NULL DEFAULT 0,
+                profit_micro INTEGER NOT NULL DEFAULT 0,gross_margin_ppm INTEGER NOT NULL DEFAULT 0,
+                price_version_id INTEGER,supplier_cost_version_id INTEGER,status TEXT NOT NULL,
+                metadata_json TEXT NOT NULL DEFAULT '{}')"""
             )
 
     def _connect(self) -> sqlite3.Connection:
@@ -85,13 +142,14 @@ class ProviderSpendGateTests(unittest.TestCase):
         status: str = "COMPLETED",
         provider_cost: int = 0,
         customer_charge: int = 0,
+        error_code: str | None = None,
     ) -> None:
         with self.database.transaction() as connection:
             connection.execute(
                 """INSERT INTO requests(
-                request_id,user_id,status,supplier_total_cost,customer_total_charge
-                ) VALUES (?,?,?,?,?)""",
-                (request_id, user_id, status, provider_cost, customer_charge),
+                request_id,user_id,status,error_code,supplier_total_cost,customer_total_charge
+                ) VALUES (?,?,?,?,?,?)""",
+                (request_id, user_id, status, error_code, provider_cost, customer_charge),
             )
 
     def _reservation_status(self, request_id: str) -> str:
@@ -112,6 +170,91 @@ class ProviderSpendGateTests(unittest.TestCase):
                 (request_id,),
             ).fetchone()
         return int(row["value"])
+
+    def _insert_rounding_anomaly(
+        self,
+        request_id: str = "audited-margin",
+        *,
+        customer_input_rate: int = 312_500,
+        create_reservation: bool = True,
+    ) -> None:
+        if create_reservation:
+            self.assertTrue(self.gate.admit(request_id, 11).reserved)
+        with self.database.transaction() as connection:
+            connection.execute(
+                """INSERT OR IGNORE INTO price_versions VALUES(
+                8,'apiyi','deepseek-chat',?,1250000,78125,'USD')""",
+                (customer_input_rate,),
+            )
+            connection.execute(
+                """INSERT OR IGNORE INTO supplier_cost_versions VALUES(
+                12,'apiyi-canary','apiyi','deepseek-chat',250000,1000000,62500,'USD')"""
+            )
+            connection.execute(
+                """INSERT INTO requests(
+                request_id,user_id,provider,model,status,error_code,financial_alert,
+                supplier_id,price_version_id,supplier_cost_version_id,input_tokens,
+                output_tokens,cached_tokens,total_tokens,supplier_total_cost,
+                customer_total_charge,gross_profit,gross_margin_ppm,profit_status,fallback_count)
+                VALUES (?,11,'apiyi','deepseek-chat','FINANCIAL_ANOMALY',
+                'actual_dimension_margin_below_minimum',1,'apiyi-canary',8,12,
+                6,4,0,10,6,0,-6,0,'FINAL',0)""",
+                (request_id,),
+            )
+            connection.execute(
+                """INSERT INTO provider_attempts(
+                request_id,attempt_number,supplier_id,supplier_cost_version_id,status,error_code,
+                usage_source,input_tokens,output_tokens,cached_tokens,cost_micro,billing_status)
+                VALUES (?,1,'apiyi-canary',12,'SUCCESS',NULL,'provider_reported',6,4,0,6,'BILLED')""",
+                (request_id,),
+            )
+            attempt_id = int(connection.execute("SELECT last_insert_rowid()").fetchone()[0])
+            connection.execute(
+                """INSERT INTO ledger_entries(
+                request_id,attempt_id,transaction_type,amount_micro,input_tokens,output_tokens,
+                cached_tokens,total_tokens,cost_micro,supplier_cost_version_id,status,metadata_json)
+                VALUES (?,?,'ATTEMPT_COST',6,6,4,0,10,6,12,'POSTED',?)""",
+                (
+                    request_id,
+                    attempt_id,
+                    json.dumps(
+                        {
+                            "cost_semantics": "final",
+                            "usage_complete": True,
+                            "usage_source": "provider_reported",
+                        },
+                        sort_keys=True,
+                    ),
+                ),
+            )
+            settlement_metadata = {
+                "actual_usage": {"input": 6, "output": 4, "cached": 0},
+                "attempt_count": 1,
+                "candidate_revenue_micro": 7,
+                "cost_policy": "immutable-all-attempt-cost-entries",
+                "failed_margin_dimensions": ["input"],
+            }
+            connection.execute(
+                """INSERT INTO ledger_entries(
+                request_id,transaction_type,amount_micro,input_tokens,output_tokens,cached_tokens,
+                total_tokens,cost_micro,revenue_micro,profit_micro,gross_margin_ppm,
+                price_version_id,supplier_cost_version_id,status,metadata_json)
+                VALUES (?,'DEBIT_SETTLEMENT',0,6,4,0,10,6,0,-6,0,8,12,
+                'FINANCIAL_ANOMALY',?)""",
+                (request_id, json.dumps(settlement_metadata, sort_keys=True)),
+            )
+            alert_metadata = {
+                "revenue_micro": 0,
+                "candidate_revenue_micro": 7,
+                "cost_micro": 6,
+                "margin_ppm": 0,
+                "failed_dimensions": ["input"],
+            }
+            connection.execute(
+                """INSERT INTO financial_alerts(request_id,code,metadata_json)
+                VALUES (?,'actual_dimension_margin_below_minimum',?)""",
+                (request_id, json.dumps(alert_metadata, sort_keys=True)),
+            )
 
     def test_four_durable_reservations_survive_restart_and_fifth_is_blocked(self) -> None:
         reservations = [self.gate.admit(f"request-{index}", 11) for index in range(4)]
@@ -231,6 +374,201 @@ class ProviderSpendGateTests(unittest.TestCase):
             )
         with self.assertRaises(CanaryBudgetExceeded):
             restarted.admit("blocked-after-new-anomaly", 11)
+
+    def test_audited_margin_remediation_advances_exactly_one_request(self) -> None:
+        self._insert_rounding_anomaly()
+        digest = canary_policy_audit_sha256(
+            self.database,
+            expected_current_watermark=0,
+            audited_request_id="audited-margin",
+        )
+
+        watermark = advance_canary_policy_epoch(
+            self.database,
+            expected_current_watermark=0,
+            audited_request_id="audited-margin",
+            expected_evidence_sha256=digest,
+            acknowledgement=POLICY_EPOCH_ADVANCE_ACK,
+        )
+
+        self.assertEqual(watermark, 1)
+        self.assertEqual(self._reservation_status("audited-margin"), "RELEASED")
+        with self.database.read() as connection:
+            request = connection.execute(
+                "SELECT status,error_code FROM requests WHERE request_id='audited-margin'"
+            ).fetchone()
+            state = connection.execute(
+                """SELECT request_id_watermark FROM canary_budget_policy_state
+                WHERE singleton=1"""
+            ).fetchone()
+            audit = connection.execute(
+                """SELECT old_watermark,new_watermark,request_id,evidence_sha256,reason
+                FROM canary_budget_policy_advancements"""
+            ).fetchone()
+        self.assertEqual(str(request["status"]), "FINANCIAL_ANOMALY")
+        self.assertEqual(
+            str(request["error_code"]), "actual_dimension_margin_below_minimum"
+        )
+        self.assertEqual(int(state["request_id_watermark"]), 1)
+        self.assertEqual(
+            tuple(audit),
+            (0, 1, "audited-margin", digest, "MICRO_ROUNDING_MARGIN_REMEDIATED_V1"),
+        )
+        self.assertTrue(self.gate.admit("post-remediation", 11).reserved)
+
+    def test_policy_advance_rejects_unrelated_or_unaudited_state(self) -> None:
+        self._insert_rounding_anomaly()
+        self._insert_request("unrelated", status="COMPLETED")
+        with self.assertRaises(RuntimeError):
+            canary_policy_audit_sha256(
+                self.database,
+                expected_current_watermark=0,
+                audited_request_id="audited-margin",
+            )
+        with self.assertRaises(PermissionError):
+            advance_canary_policy_epoch(
+                self.database,
+                expected_current_watermark=0,
+                audited_request_id="audited-margin",
+                expected_evidence_sha256="0" * 64,
+                acknowledgement="",
+            )
+
+    def test_policy_advance_rejects_true_low_rate_even_with_matching_shape(self) -> None:
+        self._insert_rounding_anomaly(customer_input_rate=250_000)
+        with self.assertRaisesRegex(RuntimeError, "immutable rates"):
+            canary_policy_audit_sha256(
+                self.database,
+                expected_current_watermark=0,
+                audited_request_id="audited-margin",
+            )
+
+    def test_policy_advance_requires_alert_settlement_and_active_reservation(self) -> None:
+        for table in ("financial_alerts", "ledger_entries"):
+            database = _Database(Path(self.temporary.name) / f"missing-{table}.sqlite3")
+            gate = ProviderSpendGate(
+                database,
+                limit_micro=1_000_000,
+                daily_limit_micro=1_000_000,
+                reserve_micro=250_000,
+            )
+            original_database, original_gate = self.database, self.gate
+            self.database, self.gate = database, gate
+            try:
+                self._insert_rounding_anomaly()
+                with database.transaction() as connection:
+                    if table == "financial_alerts":
+                        connection.execute("DELETE FROM financial_alerts")
+                    else:
+                        connection.execute(
+                            "DELETE FROM ledger_entries WHERE transaction_type='DEBIT_SETTLEMENT'"
+                        )
+                with self.assertRaises(RuntimeError):
+                    canary_policy_audit_sha256(
+                        database,
+                        expected_current_watermark=0,
+                        audited_request_id="audited-margin",
+                    )
+            finally:
+                self.database, self.gate = original_database, original_gate
+
+        database = _Database(Path(self.temporary.name) / "no-active-reservation.sqlite3")
+        gate = ProviderSpendGate(
+            database,
+            limit_micro=1_000_000,
+            daily_limit_micro=1_000_000,
+            reserve_micro=250_000,
+        )
+        original_database, original_gate = self.database, self.gate
+        self.database, self.gate = database, gate
+        try:
+            self._insert_rounding_anomaly(create_reservation=False)
+            digest = canary_policy_audit_sha256(
+                database,
+                expected_current_watermark=0,
+                audited_request_id="audited-margin",
+            )
+            with self.assertRaisesRegex(RuntimeError, "exactly one matching active"):
+                advance_canary_policy_epoch(
+                    database,
+                    expected_current_watermark=0,
+                    audited_request_id="audited-margin",
+                    expected_evidence_sha256=digest,
+                    acknowledgement=POLICY_EPOCH_ADVANCE_ACK,
+                )
+        finally:
+            self.database, self.gate = original_database, original_gate
+
+    def test_policy_advance_digest_mismatch_rolls_back_all_changes(self) -> None:
+        self._insert_rounding_anomaly()
+        with self.assertRaisesRegex(RuntimeError, "digest changed"):
+            advance_canary_policy_epoch(
+                self.database,
+                expected_current_watermark=0,
+                audited_request_id="audited-margin",
+                expected_evidence_sha256="0" * 64,
+                acknowledgement=POLICY_EPOCH_ADVANCE_ACK,
+            )
+        self.assertEqual(self._reservation_status("audited-margin"), "ACTIVE")
+        with self.database.read() as connection:
+            watermark = connection.execute(
+                "SELECT request_id_watermark FROM canary_budget_policy_state WHERE singleton=1"
+            ).fetchone()[0]
+            audit_count = connection.execute(
+                "SELECT COUNT(*) FROM canary_budget_policy_advancements"
+            ).fetchone()[0]
+        self.assertEqual(int(watermark), 0)
+        self.assertEqual(int(audit_count), 0)
+
+    def test_policy_advance_rolls_back_release_and_audit_when_cas_fails(self) -> None:
+        self._insert_rounding_anomaly()
+        digest = canary_policy_audit_sha256(
+            self.database,
+            expected_current_watermark=0,
+            audited_request_id="audited-margin",
+        )
+        with self.database.transaction() as connection:
+            connection.execute(
+                """CREATE TRIGGER reject_policy_state_update
+                BEFORE UPDATE ON canary_budget_policy_state
+                BEGIN SELECT RAISE(ABORT,'simulated compare-and-set failure'); END"""
+            )
+        with self.assertRaises(sqlite3.IntegrityError):
+            advance_canary_policy_epoch(
+                self.database,
+                expected_current_watermark=0,
+                audited_request_id="audited-margin",
+                expected_evidence_sha256=digest,
+                acknowledgement=POLICY_EPOCH_ADVANCE_ACK,
+            )
+        self.assertEqual(self._reservation_status("audited-margin"), "ACTIVE")
+        with self.database.read() as connection:
+            watermark = connection.execute(
+                "SELECT request_id_watermark FROM canary_budget_policy_state WHERE singleton=1"
+            ).fetchone()[0]
+            audit_count = connection.execute(
+                "SELECT COUNT(*) FROM canary_budget_policy_advancements"
+            ).fetchone()[0]
+        self.assertEqual(int(watermark), 0)
+        self.assertEqual(int(audit_count), 0)
+
+    def test_policy_advancement_audit_is_append_only(self) -> None:
+        self._insert_rounding_anomaly()
+        digest = canary_policy_audit_sha256(
+            self.database,
+            expected_current_watermark=0,
+            audited_request_id="audited-margin",
+        )
+        advance_canary_policy_epoch(
+            self.database,
+            expected_current_watermark=0,
+            audited_request_id="audited-margin",
+            expected_evidence_sha256=digest,
+            acknowledgement=POLICY_EPOCH_ADVANCE_ACK,
+        )
+        with self.assertRaises(sqlite3.IntegrityError):
+            with self.database.transaction() as connection:
+                connection.execute("DELETE FROM canary_budget_policy_advancements")
 
     def test_old_owner_cannot_release_reservation(self) -> None:
         reservation = self.gate.admit("owned", 11)
