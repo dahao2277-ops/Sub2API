@@ -1,0 +1,128 @@
+{
+  "snapshot_id": "APIYI_UPSTREAM_PRICE_SNAPSHOT_20260824",
+  "catalog_source": "https://api.apiyi.com/v1/models",
+  "catalog_fetched_at": "2026-08-24T08:39:21Z",
+  "catalog_model_count": 266,
+  "pricing_source": "https://api.apiyi.com/account/pricing",
+  "pricing_verified_at": "2026-08-24T08:42:35Z",
+  "currency": "USD",
+  "rate_unit": "micro_usd_per_million_tokens",
+  "api_yi_group": "Default",
+  "api_yi_group_multiplier": 1.0,
+  "customer_markup": 1.25,
+  "customer_gross_margin": 0.2,
+  "maximum_input_tokens": 4096,
+  "models": [
+    {
+      "model": "gpt-5.6-luna",
+      "upstream_model": "gpt-5.6-luna",
+      "category": "low_cost_general",
+      "declared_endpoints": [
+        "chat.completions",
+        "responses"
+      ],
+      "input_per_million_micro": 200000,
+      "output_per_million_micro": 1200000,
+      "cached_per_million_micro": 20000,
+      "customer_input_per_million_micro": 250000,
+      "customer_output_per_million_micro": 1500000,
+      "customer_cached_per_million_micro": 25000,
+      "tier_scope": "0-272000 input tokens",
+      "internal_only": false,
+      "planned_customer_visible": true,
+      "validation_status": "catalog_and_price_verified_endpoint_pending"
+    },
+    {
+      "model": "gpt-5.6-terra",
+      "upstream_model": "gpt-5.6-terra",
+      "category": "balanced_openai",
+      "declared_endpoints": [
+        "chat.completions",
+        "responses"
+      ],
+      "input_per_million_micro": 2000000,
+      "output_per_million_micro": 12000000,
+      "cached_per_million_micro": 200000,
+      "customer_input_per_million_micro": 2500000,
+      "customer_output_per_million_micro": 15000000,
+      "customer_cached_per_million_micro": 250000,
+      "tier_scope": "0-272000 input tokens",
+      "internal_only": false,
+      "planned_customer_visible": true,
+      "validation_status": "catalog_and_price_verified_endpoint_pending"
+    },
+    {
+      "model": "gpt-5.6-sol",
+      "upstream_model": "gpt-5.6-sol",
+      "category": "high_performance_openai",
+      "declared_endpoints": [
+        "chat.completions",
+        "responses"
+      ],
+      "input_per_million_micro": 5000000,
+      "output_per_million_micro": 30000000,
+      "cached_per_million_micro": 500000,
+      "customer_input_per_million_micro": 6250000,
+      "customer_output_per_million_micro": 37500000,
+      "customer_cached_per_million_micro": 625000,
+      "tier_scope": "0-272000 input tokens",
+      "internal_only": true,
+      "planned_customer_visible": false,
+      "validation_status": "catalog_and_price_verified_endpoint_pending"
+    },
+    {
+      "model": "deepseek-chat",
+      "upstream_model": "deepseek-chat",
+      "category": "deepseek_stable_text",
+      "declared_endpoints": [
+        "chat.completions"
+      ],
+      "input_per_million_micro": 250000,
+      "output_per_million_micro": 1000000,
+      "cached_per_million_micro": 62500,
+      "customer_input_per_million_micro": 312500,
+      "customer_output_per_million_micro": 1250000,
+      "customer_cached_per_million_micro": 78125,
+      "tier_scope": "flat",
+      "internal_only": true,
+      "planned_customer_visible": false,
+      "validation_status": "catalog_and_price_verified_endpoint_pending"
+    },
+    {
+      "model": "gemini-2.5-flash",
+      "upstream_model": "gemini-2.5-flash",
+      "category": "gemini_flash_stable_text",
+      "declared_endpoints": [
+        "chat.completions"
+      ],
+      "input_per_million_micro": 300000,
+      "output_per_million_micro": 2400000,
+      "cached_per_million_micro": 30000,
+      "customer_input_per_million_micro": 375000,
+      "customer_output_per_million_micro": 3000000,
+      "customer_cached_per_million_micro": 37500,
+      "tier_scope": "flat",
+      "internal_only": true,
+      "planned_customer_visible": false,
+      "validation_status": "catalog_and_price_verified_endpoint_pending"
+    },
+    {
+      "model": "kimi-k2.6",
+      "upstream_model": "kimi-k2.6",
+      "category": "kimi_stable_text",
+      "declared_endpoints": [
+        "chat.completions"
+      ],
+      "input_per_million_micro": 600000,
+      "output_per_million_micro": 2400000,
+      "cached_per_million_micro": 101100,
+      "customer_input_per_million_micro": 750000,
+      "customer_output_per_million_micro": 3000000,
+      "customer_cached_per_million_micro": 126375,
+      "tier_scope": "flat",
+      "internal_only": true,
+      "planned_customer_visible": false,
+      "validation_status": "catalog_and_price_verified_endpoint_pending"
+    }
+  ]
+}
