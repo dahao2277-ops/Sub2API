@@ -57,7 +57,14 @@ totp_key="$(tr -d '\n' < "$runtime/totp_encryption_key")"
   echo "TOTP_ENCRYPTION_KEY=$totp_key"
 } > "$runtime/sub2api.env"
 
-release_commit="$(git -C "$root/../../.." rev-parse HEAD)"
+release_commit="${SUB2API_RELEASE_COMMIT:-}"
+if [ -z "$release_commit" ]; then
+  release_commit="$(git -C "$root/../../.." rev-parse HEAD)"
+fi
+printf '%s' "$release_commit" | grep -Eq '^[0-9a-f]{40}$' || {
+  echo "SUB2API_RELEASE_COMMIT must be a full Git commit SHA" >&2
+  exit 1
+}
 release_tag="$(printf '%s' "$release_commit" | cut -c1-12)"
 {
   echo "AI99T_DOMAIN=$domain"
