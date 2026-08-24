@@ -58,7 +58,7 @@ BEGIN
   IF current_setting('ai16t.provider_mode') = 'apiyi' AND EXISTS (
     SELECT 1 FROM accounts
     WHERE deleted_at IS NULL AND (
-          name <> 'APIYI-CANARY-OPENAI'
+          name <> 'APIYI-PROD-CANARY'
        OR platform <> 'openai'
        OR type <> 'apikey'
        OR status <> 'disabled'
@@ -69,6 +69,17 @@ BEGIN
     )
   ) THEN
     RAISE EXCEPTION 'unexpected provider account state in APIYI Canary';
+  END IF;
+  IF current_setting('ai16t.provider_mode') = 'apiyi' AND NOT EXISTS (
+    SELECT 1 FROM groups
+    WHERE name='CANARY-CUSTOMER-01' AND deleted_at IS NULL
+      AND status='active' AND is_exclusive AND platform='openai'
+      AND daily_limit_usd=1.0 AND default_validity_days=7 AND rpm_limit=10
+      AND NOT allow_image_generation AND NOT allow_batch_image_generation
+      AND NOT allow_live
+      AND models_list_config='{"enabled":true,"models":["deepseek-chat","gpt-5.6-luna"]}'::jsonb
+  ) THEN
+    RAISE EXCEPTION 'first customer canary group policy is missing';
   END IF;
 END $$;
 SQL
