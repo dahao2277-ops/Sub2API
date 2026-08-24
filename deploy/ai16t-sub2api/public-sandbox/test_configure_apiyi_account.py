@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -18,6 +20,90 @@ class ConfigureAPIYIAccountTests(unittest.TestCase):
         self.assertEqual(target.SECRET_REFERENCE, "apiyi/prod-canary")
         self.assertEqual(target.CANARY_MODELS, ("deepseek-chat", "gpt-5.6-luna"))
         self.assertEqual(target.DATABASE_NAME, "ai99t_sub2api")
+
+    def test_runtime_script_does_not_export_bootstrap_password_by_default(self) -> None:
+        script = (target.ROOT / "prepare_runtime.sh").read_text()
+        self.assertIn('bootstrap_mode="${AI99T_BOOTSTRAP_MODE:-false}"', script)
+        self.assertIn('if [ "$bootstrap_mode" = "true" ]; then', script)
+        self.assertNotIn('generate_password_secret "$runtime/admin_password"\ngenerate_', script)
+        self.assertIn('if [ "$provider_mode" = "apiyi" ]; then', script)
+        self.assertIn('"deepseek-chat"', script)
+        self.assertIn('"gpt-5.6-luna"', script)
+        self.assertNotIn('"gpt-5.6-sol"', script)
+
+    def _run_prepare_runtime(
+        self, bootstrap_mode: str
+    ) -> tuple[Path, subprocess.CompletedProcess[str]]:
+        temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(temporary.cleanup)
+        root = Path(temporary.name)
+        sandbox = root / "public-sandbox"
+        sandbox.mkdir()
+        script = sandbox / "prepare_runtime.sh"
+        shutil.copy2(target.ROOT / "prepare_runtime.sh", script)
+        runtime = sandbox / ".runtime"
+        runtime.mkdir(mode=0o700)
+        (runtime / "apiyi_model_config_core.json").write_text(
+            json.dumps(
+                {
+                    "models": [
+                        {"model": model}
+                        for model in (
+                            "gpt-5.6-luna",
+                            "gpt-5.6-terra",
+                            "gpt-5.6-sol",
+                            "deepseek-chat",
+                            "gemini-2.5-flash",
+                            "kimi-k2.6",
+                        )
+                    ]
+                }
+            )
+        )
+        environment = os.environ.copy()
+        environment.update(
+            {
+                "AI99T_BOOTSTRAP_MODE": bootstrap_mode,
+                "AI16T_PROVIDER_MODE": "apiyi",
+                "AI99T_SECRET_ROOT": str(root / "secret-provider"),
+                "AI99T_DRIFT_DATA_DIR": str(root / "drift"),
+                "SUB2API_RELEASE_COMMIT": "a" * 40,
+                "AI16T_CORE_RELEASE_COMMIT": "b" * 40,
+                "AI16T_CORE_RELEASE_TREE": "c" * 40,
+                "AI16T_CORE_SOURCE_DIR": str(root / "unused-core-source"),
+            }
+        )
+        completed = subprocess.run(
+            [str(script)],
+            check=True,
+            capture_output=True,
+            text=True,
+            env=environment,
+        )
+        return runtime, completed
+
+    def test_prepare_runtime_false_has_no_admin_password_and_replaces_models(self) -> None:
+        runtime, completed = self._run_prepare_runtime("false")
+        sub2api_env = (runtime / "sub2api.env").read_text().splitlines()
+        self.assertFalse(any(line.startswith("ADMIN_PASSWORD=") for line in sub2api_env))
+        self.assertFalse((runtime / "admin_password").exists())
+        self.assertIn("AI99T_BOOTSTRAP_MODE=false", (runtime / "public.env").read_text())
+        models = json.loads((runtime / "apiyi_model_config_core.json").read_text())
+        self.assertEqual(
+            [item["model"] for item in models["models"]],
+            ["deepseek-chat", "gpt-5.6-luna"],
+        )
+        self.assertNotIn("ADMIN_PASSWORD", completed.stdout + completed.stderr)
+
+    def test_prepare_runtime_true_requires_generated_mode_0600_password(self) -> None:
+        runtime, completed = self._run_prepare_runtime("true")
+        password_file = runtime / "admin_password"
+        password = password_file.read_text().strip()
+        self.assertTrue(password)
+        self.assertEqual(password_file.stat().st_mode & 0o777, 0o600)
+        self.assertIn("ADMIN_PASSWORD=" + password, (runtime / "sub2api.env").read_text())
+        self.assertIn("AI99T_BOOTSTRAP_MODE=true", (runtime / "public.env").read_text())
+        self.assertNotIn(password, completed.stdout + completed.stderr)
 
     @mock.patch.object(target, "compose")
     def test_configure_keeps_plaintext_out_and_applies_canary_limits(self, compose: mock.Mock) -> None:

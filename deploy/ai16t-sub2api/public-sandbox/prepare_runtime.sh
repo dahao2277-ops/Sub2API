@@ -9,10 +9,15 @@ core_source="${AI16T_CORE_SOURCE_DIR:-/srv/ai99t/current/commercial-core}"
 secret_root="${AI99T_SECRET_ROOT:-/srv/ai99t/shared/apiyi-secret-provider}"
 drift_root="${AI99T_DRIFT_DATA_DIR:-/srv/ai99t/shared/ai16t-drift}"
 provider_mode="${AI16T_PROVIDER_MODE:-mock}"
+bootstrap_mode="${AI99T_BOOTSTRAP_MODE:-false}"
 
 case "$domain" in
   ai99t.com) ;;
   *) echo "Refusing unexpected public domain" >&2; exit 1 ;;
+esac
+case "$bootstrap_mode" in
+  true|false) ;;
+  *) echo "AI99T_BOOTSTRAP_MODE must be true or false" >&2; exit 1 ;;
 esac
 
 umask 077
@@ -49,26 +54,27 @@ generate_hex_secret "$runtime/database_password"
 generate_hex_secret "$runtime/redis_password"
 generate_hex_secret "$runtime/jwt_secret"
 generate_hex_secret "$runtime/totp_encryption_key"
-generate_password_secret "$runtime/admin_password"
+if [ "$bootstrap_mode" = "true" ]; then
+  generate_password_secret "$runtime/admin_password"
+fi
 
 if [ ! -f "$secret_root/master_key" ]; then
   openssl rand 32 > "$secret_root/master_key"
 fi
 chmod 0600 "$secret_root/master_key"
 
-if [ ! -f "$runtime/apiyi_model_config_core.json" ]; then
-  if [ "$provider_mode" = "apiyi" ]; then
-    printf '%s\n' '{"models":[{"model":"deepseek-chat","upstream_model":"deepseek-chat","input_per_million_micro":250000,"output_per_million_micro":1000000,"cached_per_million_micro":62500,"customer_input_per_million_micro":312500,"customer_output_per_million_micro":1250000,"customer_cached_per_million_micro":78125},{"model":"gpt-5.6-luna","upstream_model":"gpt-5.6-luna","input_per_million_micro":200000,"output_per_million_micro":1200000,"cached_per_million_micro":20000,"customer_input_per_million_micro":250000,"customer_output_per_million_micro":1500000,"customer_cached_per_million_micro":25000}]}' > "$runtime/apiyi_model_config_core.json"
-  else
+if [ "$provider_mode" = "apiyi" ]; then
+  # Every APIYI release rewrites the allowlist from reviewed source so a copied
+  # prior runtime cannot silently retain experimental or high-cost models.
+  printf '%s\n' '{"models":[{"model":"deepseek-chat","upstream_model":"deepseek-chat","input_per_million_micro":250000,"output_per_million_micro":1000000,"cached_per_million_micro":62500,"customer_input_per_million_micro":312500,"customer_output_per_million_micro":1250000,"customer_cached_per_million_micro":78125},{"model":"gpt-5.6-luna","upstream_model":"gpt-5.6-luna","input_per_million_micro":200000,"output_per_million_micro":1200000,"cached_per_million_micro":20000,"customer_input_per_million_micro":250000,"customer_output_per_million_micro":1500000,"customer_cached_per_million_micro":25000}]}' > "$runtime/apiyi_model_config_core.json"
+elif [ ! -f "$runtime/apiyi_model_config_core.json" ]; then
     printf '%s\n' '{"models":[{"model":"gpt-4o-mini","upstream_model":"gpt-4o-mini","input_per_million_micro":10000000,"output_per_million_micro":10000000,"cached_per_million_micro":5000000,"customer_input_per_million_micro":15000000,"customer_output_per_million_micro":15000000,"customer_cached_per_million_micro":7500000}]}' > "$runtime/apiyi_model_config_core.json"
-  fi
 fi
 cp "$runtime/apiyi_model_config_core.json" "$runtime/apiyi_model_config_sub2api.json"
 chmod 0600 "$runtime/apiyi_model_config_core.json" "$runtime/apiyi_model_config_sub2api.json"
 
 database_password="$(tr -d '\n' < "$runtime/database_password")"
 redis_password="$(tr -d '\n' < "$runtime/redis_password")"
-admin_password="$(tr -d '\n' < "$runtime/admin_password")"
 jwt_secret="$(tr -d '\n' < "$runtime/jwt_secret")"
 totp_key="$(tr -d '\n' < "$runtime/totp_encryption_key")"
 
@@ -76,7 +82,10 @@ totp_key="$(tr -d '\n' < "$runtime/totp_encryption_key")"
   echo "DATABASE_PASSWORD=$database_password"
   echo "REDIS_PASSWORD=$redis_password"
   echo "ADMIN_EMAIL=$admin_email"
-  echo "ADMIN_PASSWORD=$admin_password"
+  if [ "$bootstrap_mode" = "true" ]; then
+    admin_password="$(tr -d '\n' < "$runtime/admin_password")"
+    echo "ADMIN_PASSWORD=$admin_password"
+  fi
   echo "JWT_SECRET=$jwt_secret"
   echo "TOTP_ENCRYPTION_KEY=$totp_key"
 } > "$runtime/sub2api.env"
@@ -122,6 +131,7 @@ case "$provider_mode" in
 esac
 {
   echo "AI99T_DOMAIN=$domain"
+  echo "AI99T_BOOTSTRAP_MODE=$bootstrap_mode"
   echo "AI99T_ACME_EMAIL=$admin_email"
   echo "AI99T_ACTIVE_UPSTREAM=sub2api-blue:8080"
   echo "SUB2API_RELEASE_COMMIT=$release_commit"
@@ -165,9 +175,11 @@ chmod 0600 \
   "$runtime/redis_password" \
   "$runtime/jwt_secret" \
   "$runtime/totp_encryption_key" \
-  "$runtime/admin_password" \
   "$runtime/sub2api.env" \
   "$runtime/public.env"
+if [ "$bootstrap_mode" = "true" ]; then
+  chmod 0600 "$runtime/admin_password"
+fi
 if [ "$(id -u)" -eq 0 ]; then
   chown 65532:65532 "$runtime/core_signing_key" "$runtime/mock_provider_key"
   chown 65532:65532 "$runtime/apiyi_model_config_core.json"

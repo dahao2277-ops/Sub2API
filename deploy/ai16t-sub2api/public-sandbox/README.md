@@ -20,7 +20,7 @@ Real payment remains disabled.
 Run all commands from this directory on the target server:
 
 ```sh
-./prepare_runtime.sh
+AI99T_BOOTSTRAP_MODE=true ./prepare_runtime.sh
 ./check_isolation.sh
 docker compose --env-file .runtime/public.env -f compose.public-sandbox.yml config --quiet
 docker compose --env-file .runtime/public.env -f compose.public-sandbox.yml up -d --build --wait postgres redis mock-provider secret-provider commercial-core sub2api-blue
@@ -30,6 +30,10 @@ python3 monitor.py
 python3 backup_restore_verify.py
 docker compose --env-file .runtime/public.env -f compose.public-sandbox.yml up -d --wait edge
 ```
+
+`AI99T_BOOTSTRAP_MODE=true` is only for the first empty-database bootstrap.
+All subsequent releases must use the default `false`, which prevents the
+one-time administrator password from entering a long-lived container environment.
 
 DNS must point `ai99t.com` and `www.ai99t.com` at the server before Caddy can complete ACME TLS issuance.
 

@@ -16,6 +16,7 @@ x-sub2api-slot: &sub2api-slot
     - .runtime/sub2api.env
   environment: &sub2api-environment
     AUTO_SETUP: "true"
+    AI99T_BOOTSTRAP_MODE: ${AI99T_BOOTSTRAP_MODE:-false}
     SERVER_HOST: 0.0.0.0
     SERVER_PORT: "8080"
     SERVER_MODE: release

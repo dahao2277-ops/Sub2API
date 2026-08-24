@@ -328,7 +328,7 @@ func Install(cfg *SetupConfig) error {
 	}
 
 	// Create admin user (only when database is empty and no admin exists).
-	if _, _, err := createAdminUser(cfg); err != nil {
+	if _, _, err := createAdminUser(cfg, true); err != nil {
 		return fmt.Errorf("admin user creation failed: %w", err)
 	}
 
@@ -381,7 +381,20 @@ func (cfg *SetupConfig) migrationTimeout() time.Duration {
 	return defaultMigrationTimeout
 }
 
-func createAdminUser(cfg *SetupConfig) (bool, string, error) {
+func validateAdminBootstrap(decision adminBootstrapDecision, explicitlyAllowed bool, password string) error {
+	if !decision.shouldCreate {
+		return nil
+	}
+	if !explicitlyAllowed {
+		return fmt.Errorf("empty database requires explicit administrator bootstrap authorization")
+	}
+	if strings.TrimSpace(password) == "" {
+		return fmt.Errorf("explicit administrator password is required for bootstrap")
+	}
+	return nil
+}
+
+func createAdminUser(cfg *SetupConfig, explicitlyAllowed bool) (bool, string, error) {
 	dsn := fmt.Sprintf(
 		"host=%s port=%d user=%s password=%s dbname=%s sslmode=%s",
 		cfg.Database.Host, cfg.Database.Port, cfg.Database.User,
@@ -415,15 +428,8 @@ func createAdminUser(cfg *SetupConfig) (bool, string, error) {
 	if !decision.shouldCreate {
 		return false, decision.reason, nil
 	}
-
-	if strings.TrimSpace(cfg.Admin.Password) == "" {
-		password, genErr := generateSecret(16)
-		if genErr != nil {
-			return false, "", fmt.Errorf("failed to generate admin password: %w", genErr)
-		}
-		cfg.Admin.Password = password
-		fmt.Printf("Generated admin password (one-time): %s\n", cfg.Admin.Password)
-		fmt.Println("IMPORTANT: Save this password! It will not be shown again.")
+	if err := validateAdminBootstrap(decision, explicitlyAllowed, cfg.Admin.Password); err != nil {
+		return false, decision.reason, err
 	}
 
 	admin := &service.User{
@@ -544,6 +550,10 @@ func AutoSetupEnabled() bool {
 	return val == "true" || val == "1" || val == "yes"
 }
 
+func autoSetupAdminBootstrapEnabled() bool {
+	return strings.EqualFold(strings.TrimSpace(os.Getenv("AI99T_BOOTSTRAP_MODE")), "true")
+}
+
 // getEnvOrDefault gets environment variable or returns default value
 func getEnvOrDefault(key, defaultValue string) string {
 	if val := os.Getenv(key); val != "" {
@@ -642,7 +652,7 @@ func AutoSetupFromEnv() error {
 
 	// Create admin user
 	logger.LegacyPrintf("setup", "%s", "Creating admin user...")
-	created, reason, err := createAdminUser(cfg)
+	created, reason, err := createAdminUser(cfg, autoSetupAdminBootstrapEnabled())
 	if err != nil {
 		return fmt.Errorf("admin user creation failed: %w", err)
 	}

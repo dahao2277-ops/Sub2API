@@ -56,6 +56,42 @@ func TestDecideAdminBootstrap(t *testing.T) {
 	}
 }
 
+func TestValidateAdminBootstrapRequiresExplicitModeAndPassword(t *testing.T) {
+	empty := decideAdminBootstrap(0, 0)
+	if err := validateAdminBootstrap(empty, false, "owner-provided"); err == nil {
+		t.Fatal("empty database without explicit bootstrap mode must fail")
+	}
+	if err := validateAdminBootstrap(empty, true, ""); err == nil {
+		t.Fatal("explicit bootstrap without password must fail")
+	}
+	if err := validateAdminBootstrap(empty, true, "owner-provided"); err != nil {
+		t.Fatalf("explicit bootstrap with password failed: %v", err)
+	}
+	if err := validateAdminBootstrap(decideAdminBootstrap(1, 1), false, ""); err != nil {
+		t.Fatalf("existing administrator should not require bootstrap inputs: %v", err)
+	}
+}
+
+func TestAutoSetupAdminBootstrapEnabledIsExplicit(t *testing.T) {
+	for _, tc := range []struct {
+		value string
+		want  bool
+	}{
+		{value: "true", want: true},
+		{value: " TRUE ", want: true},
+		{value: "false", want: false},
+		{value: "1", want: false},
+		{value: "", want: false},
+	} {
+		t.Run(tc.value, func(t *testing.T) {
+			t.Setenv("AI99T_BOOTSTRAP_MODE", tc.value)
+			if got := autoSetupAdminBootstrapEnabled(); got != tc.want {
+				t.Fatalf("autoSetupAdminBootstrapEnabled()=%v, want %v", got, tc.want)
+			}
+		})
+	}
+}
+
 func TestSetupDefaultAdminConcurrency(t *testing.T) {
 	t.Run("simple mode admin uses higher concurrency", func(t *testing.T) {
 		t.Setenv("RUN_MODE", "simple")
