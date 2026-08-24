@@ -48,6 +48,9 @@ x-sub2api-slot: &sub2api-slot
     AI16T_CORE_URL: http://commercial-core:8787
     AI16T_CORE_SIGNING_KEY_FILE: /run/ai99t/core_signing_key
     AI16T_FINGERPRINT_KEY_FILE: /run/ai99t/fingerprint_key
+    AI16T_PROVIDER_MODE: ${AI16T_PROVIDER_MODE:-mock}
+    AI16T_MODEL_CONFIG_FILE: /run/ai99t/apiyi_model_config
+    AI16T_DURABLE_DRIFT_DIR: /var/lib/ai16t-drift
     AI16T_PUBLIC_MODEL: ai16t-mock
     AI16T_CORE_MODEL: gpt-4o-mini
   depends_on:
@@ -104,6 +107,8 @@ services:
       - sub2api_blue_data:/app/data
       - ./.runtime/core_signing_key_sub2api:/run/ai99t/core_signing_key:ro
       - ./.runtime/fingerprint_key:/run/ai99t/fingerprint_key:ro
+      - ${AI99T_MODEL_CONFIG_SUB2API_FILE:?AI99T_MODEL_CONFIG_SUB2API_FILE is required}:/run/ai99t/apiyi_model_config:ro
+      - ${AI99T_DRIFT_DATA_DIR:?AI99T_DRIFT_DATA_DIR is required}:/var/lib/ai16t-drift
 
   sub2api-green:
     <<: *sub2api-slot
@@ -113,6 +118,8 @@ services:
       - sub2api_green_data:/app/data
       - ./.runtime/core_signing_key_sub2api:/run/ai99t/core_signing_key:ro
       - ./.runtime/fingerprint_key:/run/ai99t/fingerprint_key:ro
+      - ${AI99T_MODEL_CONFIG_SUB2API_FILE:?AI99T_MODEL_CONFIG_SUB2API_FILE is required}:/run/ai99t/apiyi_model_config:ro
+      - ${AI99T_DRIFT_DATA_DIR:?AI99T_DRIFT_DATA_DIR is required}:/var/lib/ai16t-drift
 
   migration-check:
     <<: *sub2api-slot
@@ -126,6 +133,8 @@ services:
       - migration_check_data:/app/data
       - ./.runtime/core_signing_key_sub2api:/run/ai99t/core_signing_key:ro
       - ./.runtime/fingerprint_key:/run/ai99t/fingerprint_key:ro
+      - ${AI99T_MODEL_CONFIG_SUB2API_FILE:?AI99T_MODEL_CONFIG_SUB2API_FILE is required}:/run/ai99t/apiyi_model_config:ro
+      - ${AI99T_DRIFT_DATA_DIR:?AI99T_DRIFT_DATA_DIR is required}:/var/lib/ai16t-drift
     networks:
       - platform_b_private
 
@@ -134,10 +143,10 @@ services:
       context: ${AI16T_CORE_SOURCE_DIR:?AI16T_CORE_SOURCE_DIR is required}
       dockerfile: Dockerfile
       args:
-        TP_OCI_REVISION: 56108397f31a97926f33d28420e9b44a52547bd2
-        TP_OCI_TREE: 6057218ef7291f5d9fb493e8fb7b02fa059ef049
+        TP_OCI_REVISION: ${AI16T_CORE_RELEASE_COMMIT:?AI16T_CORE_RELEASE_COMMIT is required}
+        TP_OCI_TREE: ${AI16T_CORE_RELEASE_TREE:?AI16T_CORE_RELEASE_TREE is required}
         TP_EVIDENCE_RUN_ID: ai99t-platform-b-public-sandbox
-    image: ai99t/commercial-core:56108397
+    image: ai99t/commercial-core:${AI16T_CORE_IMAGE_TAG:?AI16T_CORE_IMAGE_TAG is required}
     restart: unless-stopped
     init: true
     entrypoint: ["python", "/bridge/core_bridge.py"]
@@ -154,23 +163,38 @@ services:
       TP_BIND_HOST: 0.0.0.0
       TP_CONTAINER_ISOLATION_ACK: "1"
       TP_DATABASE_PATH: /data/token-platform.sqlite3
-      TP_RUNTIME_MODE: isolated-test
-      TP_TEST_MODE: mock-only-enabled
+      TP_RUNTIME_MODE: ${AI16T_CORE_RUNTIME_MODE:-isolated-test}
+      TP_TEST_MODE: ${AI16T_CORE_TEST_MODE:-mock-only-enabled}
       TP_MIN_PROFIT_MARGIN_PPM: "100000"
       AI16T_CORE_SIGNING_KEY_FILE: /run/ai99t/core_signing_key
       AI16T_MOCK_PROVIDER_KEY_FILE: /run/ai99t/mock_provider_key
       AI16T_MOCK_PROVIDER_URL: http://mock-provider:9090
-      AI16T_INITIAL_CREDIT_MICRO: "200000"
+      AI16T_PROVIDER_MODE: ${AI16T_PROVIDER_MODE:-mock}
+      AI16T_PROVIDER_BASE_URL: https://api.apiyi.com/v1
+      AI16T_PROVIDER_SECRET_REF: ${AI16T_PROVIDER_SECRET_REF:-apiyi/prod-canary}
+      AI16T_PROVIDER_TIMEOUT_SECONDS: "20"
+      AI16T_SECRET_SOCKET: /run/ai16t-secret/provider.sock
+      AI16T_MODEL_CONFIG_FILE: /run/ai99t/apiyi_model_config
+      AI16T_CANARY_USER_REFERENCES: ${AI16T_CANARY_USER_REFERENCES:-}
+      AI16T_INITIAL_CREDIT_MICRO: ${AI16T_INITIAL_CREDIT_MICRO:-200000}
+      TP_MAX_STREAM_ZERO_USAGE_CONSECUTIVE: "1024"
+      TP_MAX_STREAM_ZERO_USAGE_TOTAL: "1024"
     depends_on:
       mock-provider:
+        condition: service_healthy
+      secret-provider:
         condition: service_healthy
     volumes:
       - core_data:/data
       - ../core_bridge.py:/bridge/core_bridge.py:ro
+      - ../apiyi_provider.py:/bridge/apiyi_provider.py:ro
+      - ../secret_provider_client.py:/bridge/secret_provider_client.py:ro
       - ../core_evidence.py:/evidence/core_evidence.py:ro
       - ../staging/core_backup.py:/ops/core_backup.py:ro
       - ./.runtime/core_signing_key:/run/ai99t/core_signing_key:ro
       - ./.runtime/mock_provider_key:/run/ai99t/mock_provider_key:ro
+      - ${AI99T_MODEL_CONFIG_CORE_FILE:?AI99T_MODEL_CONFIG_CORE_FILE is required}:/run/ai99t/apiyi_model_config:ro
+      - ${AI99T_SECRET_RUN_DIR:?AI99T_SECRET_RUN_DIR is required}:/run/ai16t-secret
     networks:
       - platform_b_private
     healthcheck:
@@ -184,8 +208,36 @@ services:
       retries: 30
       start_period: 15s
 
+  secret-provider:
+    image: ai99t/sub2api:${SUB2API_IMAGE_TAG:?SUB2API_IMAGE_TAG is required}
+    restart: unless-stopped
+    init: true
+    entrypoint: ["/app/ai16t-secret-provider", "serve"]
+    read_only: true
+    user: "65532:65532"
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    environment:
+      AI16T_SECRET_DATA_DIR: /data
+      AI16T_SECRET_MASTER_KEY_FILE: /run/ai99t/secret_master_key
+      AI16T_SECRET_SOCKET: /run/ai16t-secret/provider.sock
+    volumes:
+      - ${AI99T_SECRET_DATA_DIR:?AI99T_SECRET_DATA_DIR is required}:/data
+      - ${AI99T_SECRET_RUN_DIR:?AI99T_SECRET_RUN_DIR is required}:/run/ai16t-secret
+      - ${AI99T_SECRET_MASTER_KEY_FILE:?AI99T_SECRET_MASTER_KEY_FILE is required}:/run/ai99t/secret_master_key:ro
+    networks:
+      - platform_b_private
+    healthcheck:
+      test: ["CMD", "/app/ai16t-secret-provider", "health"]
+      interval: 10s
+      timeout: 3s
+      retries: 30
+      start_period: 5s
+
   mock-provider:
-    image: ai99t/commercial-core:56108397
+    image: ai99t/commercial-core:${AI16T_CORE_IMAGE_TAG:?AI16T_CORE_IMAGE_TAG is required}
     restart: unless-stopped
     init: true
     entrypoint: ["python", "/mock/mock_provider.py"]

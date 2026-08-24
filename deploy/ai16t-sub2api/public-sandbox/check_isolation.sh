@@ -26,8 +26,11 @@ for marker in \
   'SECURITY_URL_ALLOWLIST_ALLOW_PRIVATE_HOSTS: "false"' \
   '127.0.0.1:${BLUE_LOOPBACK_PORT:-18181}:8080' \
   '127.0.0.1:${GREEN_LOOPBACK_PORT:-18182}:8080' \
-  'TP_RUNTIME_MODE: isolated-test' \
-  'TP_TEST_MODE: mock-only-enabled'; do
+  'TP_RUNTIME_MODE: ${AI16T_CORE_RUNTIME_MODE:-isolated-test}' \
+  'TP_TEST_MODE: ${AI16T_CORE_TEST_MODE:-mock-only-enabled}' \
+  'AI16T_PROVIDER_BASE_URL: https://api.apiyi.com/v1' \
+  'AI16T_SECRET_SOCKET: /run/ai16t-secret/provider.sock' \
+  'internal: true'; do
   require_text "$marker" "$compose"
 done
 

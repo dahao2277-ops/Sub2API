@@ -26,9 +26,9 @@ const maxAI16TRequestBytes = 1 << 20
 type ai16tHybridHandler struct {
 	core           *ai16tadapter.HTTPCommercialCore
 	projections    *ai16tadapter.RedisProjectionStore
+	models         *ai16tadapter.MapModelSource
+	driftGate      *ai16tadapter.DurableDriftGate
 	fingerprintKey []byte
-	publicModel    string
-	coreModel      string
 	isolatedTest   bool
 	emergencyGate  *ai16tadapter.EmergencyDriftGate
 }
@@ -58,18 +58,35 @@ func RegisterAI16THybridRoutes(
 	if err != nil {
 		return fmt.Errorf("configure projection store: %w", err)
 	}
+	mappings, err := loadAI16TModelMappings()
+	if err != nil {
+		return fmt.Errorf("configure AI16T model mappings: %w", err)
+	}
+	models, err := ai16tadapter.NewMapModelSource(mappings)
+	if err != nil {
+		return fmt.Errorf("configure AI16T model source: %w", err)
+	}
+	driftGate, err := ai16tadapter.NewDurableDriftGate(
+		projections,
+		os.Getenv("AI16T_DURABLE_DRIFT_DIR"),
+	)
+	if err != nil {
+		return fmt.Errorf("configure durable drift gate: %w", err)
+	}
 	handler := &ai16tHybridHandler{
 		core:           core,
 		projections:    projections,
+		models:         models,
+		driftGate:      driftGate,
 		fingerprintKey: fingerprintKey,
-		publicModel:    envOrDefault("AI16T_PUBLIC_MODEL", "ai16t-mock"),
-		coreModel:      envOrDefault("AI16T_CORE_MODEL", "gpt-4o-mini"),
 		isolatedTest:   isolatedTestHooksEnabled(),
 		emergencyGate:  ai16tadapter.NewEmergencyDriftGate(),
 	}
 
 	r.GET("/ready", handler.ready)
-	r.POST("/v1/ai16t/chat/completions", gin.HandlerFunc(apiKeyAuth), handler.execute)
+	r.GET("/v1/ai16t/models", gin.HandlerFunc(apiKeyAuth), handler.listModels)
+	r.POST("/v1/ai16t/chat/completions", gin.HandlerFunc(apiKeyAuth), handler.executeChat)
+	r.POST("/v1/ai16t/responses", gin.HandlerFunc(apiKeyAuth), handler.executeResponses)
 	r.GET("/v1/ai16t/projection", gin.HandlerFunc(apiKeyAuth), handler.projection)
 	admin := r.Group("/api/v1/admin/ai16t", gin.HandlerFunc(adminAuth))
 	admin.POST("/reconcile", handler.reconcile)
@@ -92,14 +109,19 @@ func (h *ai16tHybridHandler) ready(c *gin.Context) {
 }
 
 type ai16tOpenAIRequest struct {
-	Model    string `json:"model"`
-	Messages []struct {
-		Role    string `json:"role"`
-		Content string `json:"content"`
-	} `json:"messages"`
+	Model  string `json:"model"`
+	Stream bool   `json:"stream"`
 }
 
-func (h *ai16tHybridHandler) execute(c *gin.Context) {
+func (h *ai16tHybridHandler) executeChat(c *gin.Context) {
+	h.executeEndpoint(c, "chat.completions")
+}
+
+func (h *ai16tHybridHandler) executeResponses(c *gin.Context) {
+	h.executeEndpoint(c, "responses")
+}
+
+func (h *ai16tHybridHandler) executeEndpoint(c *gin.Context, endpoint string) {
 	apiKey, ok := middleware.GetAPIKeyFromContext(c)
 	if !ok || apiKey.User == nil {
 		middleware.AbortWithError(c, http.StatusUnauthorized, "AI16T_AUTH_REQUIRED", "API key authentication required")
@@ -111,8 +133,25 @@ func (h *ai16tHybridHandler) execute(c *gin.Context) {
 		return
 	}
 	var request ai16tOpenAIRequest
-	if err := json.Unmarshal(body, &request); err != nil || request.Model != h.publicModel || len(request.Messages) == 0 {
+	var forwarded map[string]any
+	if err := json.Unmarshal(body, &request); err != nil || json.Unmarshal(body, &forwarded) != nil || request.Model == "" {
 		middleware.AbortWithError(c, http.StatusBadRequest, "AI16T_INVALID_REQUEST", "model and messages are required")
+		return
+	}
+	if endpoint == "chat.completions" {
+		messages, ok := forwarded["messages"].([]any)
+		if !ok || len(messages) == 0 {
+			middleware.AbortWithError(c, http.StatusBadRequest, "AI16T_INVALID_REQUEST", "messages are required")
+			return
+		}
+	} else if input, ok := forwarded["input"]; !ok || input == nil || input == "" {
+		middleware.AbortWithError(c, http.StatusBadRequest, "AI16T_INVALID_REQUEST", "responses input is required")
+		return
+	}
+	forwarded["_ai16t_endpoint"] = endpoint
+	body, err = json.Marshal(forwarded)
+	if err != nil {
+		middleware.AbortWithError(c, http.StatusBadRequest, "AI16T_INVALID_REQUEST", "request body is invalid")
 		return
 	}
 	idempotencyKey := strings.TrimSpace(c.GetHeader("Idempotency-Key"))
@@ -145,10 +184,10 @@ func (h *ai16tHybridHandler) execute(c *gin.Context) {
 	}
 	adapter, err := ai16tadapter.NewWithEmergencyDriftGate(
 		identity,
-		ai16tadapter.StaticModelSource{PublicModel: h.publicModel, CoreModel: h.coreModel},
+		h.models,
 		h.core,
 		h.projections,
-		h.projections,
+		h.driftGate,
 		h.fingerprintKey,
 		h.emergencyGate,
 	)
@@ -211,10 +250,23 @@ func (h *ai16tHybridHandler) execute(c *gin.Context) {
 		c.Header("X-AI16T-Projection-Drift", "PROJECTION_DRIFT")
 	}
 	if len(result.Core.Response) != 0 {
-		c.Data(http.StatusOK, "application/json", result.Core.Response)
+		contentType := result.Core.ContentType
+		if contentType == "" {
+			contentType = "application/json"
+		}
+		c.Data(http.StatusOK, contentType, result.Core.Response)
 		return
 	}
 	c.JSON(http.StatusBadGateway, gin.H{"error": gin.H{"code": "AI16T_PROVIDER_FAILED", "message": "provider request failed"}})
+}
+
+func (h *ai16tHybridHandler) listModels(c *gin.Context) {
+	models := h.models.PublicModels()
+	items := make([]gin.H, 0, len(models))
+	for _, model := range models {
+		items = append(items, gin.H{"id": model, "object": "model", "owned_by": "ai99t"})
+	}
+	c.JSON(http.StatusOK, gin.H{"object": "list", "data": items})
 }
 
 func (h *ai16tHybridHandler) projection(c *gin.Context) {
@@ -242,7 +294,7 @@ func (h *ai16tHybridHandler) reconcile(c *gin.Context) {
 		return
 	}
 	projection, err := h.core.Projection(c.Request.Context(), request.UserReference)
-	if err != nil || h.projections.ReconcileProjection(c.Request.Context(), projection) != nil {
+	if err != nil || h.driftGate.ReconcileProjection(c.Request.Context(), projection) != nil {
 		middleware.AbortWithError(c, http.StatusServiceUnavailable, "AI16T_RECONCILIATION_FAILED", "Ledger-driven reconciliation failed")
 		return
 	}
@@ -257,7 +309,7 @@ func (h *ai16tHybridHandler) refund(c *gin.Context) {
 		return
 	}
 	projection, err := h.core.Refund(c.Request.Context(), request)
-	if err != nil || h.projections.ReconcileProjection(c.Request.Context(), projection) != nil {
+	if err != nil || h.driftGate.ReconcileProjection(c.Request.Context(), projection) != nil {
 		middleware.AbortWithError(c, http.StatusServiceUnavailable, "AI16T_REFUND_FAILED", "authoritative refund failed")
 		return
 	}
@@ -290,6 +342,42 @@ func envOrDefault(key, fallback string) string {
 		return value
 	}
 	return fallback
+}
+
+func loadAI16TModelMappings() (map[string]string, error) {
+	if os.Getenv("AI16T_PROVIDER_MODE") != "apiyi" {
+		return map[string]string{
+			envOrDefault("AI16T_PUBLIC_MODEL", "ai16t-mock"): envOrDefault(
+				"AI16T_CORE_MODEL", "gpt-4o-mini",
+			),
+		}, nil
+	}
+	payload, err := readMode0600Secret(os.Getenv("AI16T_MODEL_CONFIG_FILE"))
+	if err != nil {
+		return nil, err
+	}
+	var config struct {
+		Models []struct {
+			Model         string `json:"model"`
+			UpstreamModel string `json:"upstream_model"`
+		} `json:"models"`
+	}
+	if err := json.Unmarshal(payload, &config); err != nil || len(config.Models) == 0 || len(config.Models) > 6 {
+		return nil, errors.New("AI16T model configuration is invalid")
+	}
+	mappings := make(map[string]string, len(config.Models))
+	for _, item := range config.Models {
+		model := strings.TrimSpace(item.Model)
+		upstream := strings.TrimSpace(item.UpstreamModel)
+		if model == "" || model != upstream {
+			return nil, errors.New("AI16T model configuration must use verified pass-through IDs")
+		}
+		if _, exists := mappings[model]; exists {
+			return nil, errors.New("AI16T model configuration contains duplicates")
+		}
+		mappings[model] = upstream
+	}
+	return mappings, nil
 }
 
 func isolatedTestHooksEnabled() bool {
