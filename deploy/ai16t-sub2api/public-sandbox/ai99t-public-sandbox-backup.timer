@@ -1,0 +1,11 @@
+[Unit]
+Description=Run AI99T Platform B verified backup daily
+
+[Timer]
+OnCalendar=*-*-* 03:17:00 Asia/Kuala_Lumpur
+Persistent=true
+RandomizedDelaySec=15m
+Unit=ai99t-public-sandbox-backup.service
+
+[Install]
+WantedBy=timers.target

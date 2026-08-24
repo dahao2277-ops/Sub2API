@@ -45,4 +45,6 @@ Verify the inactive slot through its loopback port before switching. Never edit 
 
 `backup_restore_verify.py` creates a PostgreSQL custom-format dump and a consistent SQLite Commercial Core backup, restores PostgreSQL into a disposable verification database, compares table/user counts, and verifies Core integrity. Evidence and backup files stay in `.runtime/backups` with mode 0600.
 
+On the public server, set `AI99T_BACKUP_DIR=/srv/ai99t/backups` so backups survive release-directory switches. The included `ai99t-public-sandbox-backup.{service,timer}` runs a verified backup daily at 03:17 Asia/Kuala_Lumpur, while `ai99t-public-sandbox-monitor.{service,timer}` checks both loopback Blue/Green instances every five minutes.
+
 A server-side daily timer may call the same script. DigitalOcean weekly Droplet backups are a separate infrastructure layer and do not replace application-level restore verification.

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import stat
 import subprocess
 import time
@@ -11,7 +12,13 @@ ROOT = Path(__file__).resolve().parent
 RUNTIME = ROOT / ".runtime"
 ENV_FILE = RUNTIME / "public.env"
 COMPOSE_FILE = ROOT / "compose.public-sandbox.yml"
-BACKUP_DIR = RUNTIME / "backups"
+configured_backup_dir = os.environ.get("AI99T_BACKUP_DIR", "").strip()
+if configured_backup_dir:
+    BACKUP_DIR = Path(configured_backup_dir)
+    if not BACKUP_DIR.is_absolute():
+        raise RuntimeError("AI99T_BACKUP_DIR must be an absolute path")
+else:
+    BACKUP_DIR = RUNTIME / "backups"
 POSTGRES_USER = "ai99t_sub2api"
 PRIMARY_DB = "ai99t_sub2api"
 RESTORE_DB = "ai99t_sub2api_restore_verify"
