@@ -16,6 +16,8 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import parse_qs, urlsplit
 
+from apiyi_provider import APIYIProvider, decode_raw_response
+from secret_provider_client import UnixSecretResolver
 from token_platform.config import Settings
 from token_platform.hybrid_control_plane import FileReferenceResolver
 from token_platform.models import ProviderFailure, ProviderResult, StreamChunk, Usage
@@ -128,16 +130,173 @@ class HybridAuthority:
         self.settings = Settings.from_env()
         self.platform = TokenPlatform(self.settings)
         self.platform.initialize()
-        resolver = FileReferenceResolver(
-            {"mock-provider-api-key": Path(os.environ["AI16T_MOCK_PROVIDER_KEY_FILE"])}
+        self.provider_mode = os.getenv("AI16T_PROVIDER_MODE", "mock")
+        self.secret_resolver: UnixSecretResolver | None = None
+        self.secret_reference = ""
+        self.allowed_users = frozenset(
+            value.strip()
+            for value in os.getenv("AI16T_CANARY_USER_REFERENCES", "").split(",")
+            if value.strip()
         )
-        provider_key = resolver.resolve("mock-provider-api-key").reveal()
-        external_provider = HTTPMockProvider(os.environ["AI16T_MOCK_PROVIDER_URL"], provider_key)
+        self.allowed_models: frozenset[str]
+        if self.provider_mode == "mock":
+            resolver = FileReferenceResolver(
+                {"mock-provider-api-key": Path(os.environ["AI16T_MOCK_PROVIDER_KEY_FILE"])}
+            )
+            provider_key = resolver.resolve("mock-provider-api-key").reveal()
+            external_provider = HTTPMockProvider(
+                os.environ["AI16T_MOCK_PROVIDER_URL"], provider_key
+            )
+            self.allowed_models = frozenset({"gpt-4o-mini"})
+            self.ledger_provider = "openai"
+        elif self.provider_mode == "apiyi":
+            self.secret_reference = os.environ["AI16T_PROVIDER_SECRET_REF"]
+            self.secret_resolver = UnixSecretResolver(
+                os.environ["AI16T_SECRET_SOCKET"], {self.secret_reference}
+            )
+            self.secret_resolver.ready()
+            external_provider = APIYIProvider(
+                os.environ["AI16T_PROVIDER_BASE_URL"],
+                self.secret_resolver,
+                self.secret_reference,
+                float(os.getenv("AI16T_PROVIDER_TIMEOUT_SECONDS", "20")),
+            )
+            self.ledger_provider = "apiyi"
+            self.allowed_models = self._configure_apiyi_catalog(
+                os.environ["AI16T_MODEL_CONFIG_FILE"]
+            )
+        else:
+            raise RuntimeError("unsupported AI16T provider mode")
         self.platform.provider = external_provider
         self.platform.gateway.provider = external_provider
         self.signing_key = _read_mode_0600(os.environ["AI16T_CORE_SIGNING_KEY_FILE"])
         self.identity_lock = threading.Lock()
         self._initialize_bridge_schema()
+
+    def _configure_apiyi_catalog(self, path: str) -> frozenset[str]:
+        raw = FileReferenceResolver({"apiyi-model-config": Path(path)}).resolve(
+            "apiyi-model-config"
+        ).reveal()
+        try:
+            config = json.loads(raw)
+        except json.JSONDecodeError as error:
+            raise RuntimeError("APIYI model configuration is invalid") from error
+        models = config.get("models") if isinstance(config, dict) else None
+        if not isinstance(models, list) or not 1 <= len(models) <= 6:
+            raise RuntimeError("APIYI model configuration must contain one to six models")
+        allowed: set[str] = set()
+        configured: list[dict[str, Any]] = []
+        for item in models:
+            if not isinstance(item, dict):
+                raise RuntimeError("APIYI model configuration is invalid")
+            model = str(item.get("model", ""))
+            upstream_model = str(item.get("upstream_model", ""))
+            values = (
+                int(item.get("input_per_million_micro", -1)),
+                int(item.get("output_per_million_micro", -1)),
+                int(item.get("cached_per_million_micro", -1)),
+                int(item.get("customer_input_per_million_micro", -1)),
+                int(item.get("customer_output_per_million_micro", -1)),
+                int(item.get("customer_cached_per_million_micro", -1)),
+            )
+            if (
+                not model
+                or model != upstream_model
+                or model in allowed
+                or min(values) < 0
+                or values[3] < values[0]
+                or values[4] < values[1]
+                or values[5] < values[2]
+            ):
+                raise RuntimeError("APIYI model configuration violates pricing safety")
+            allowed.add(model)
+            configured.append({"model": model, "rates": values})
+
+        with self.platform.database.transaction() as connection:
+            placeholders = ",".join("?" for _ in allowed)
+            connection.execute(
+                f"UPDATE routes SET enabled=0 WHERE provider='apiyi' "
+                f"AND model NOT IN ({placeholders})",
+                tuple(sorted(allowed)),
+            )
+        for item in configured:
+            model = str(item["model"])
+            supplier_input, supplier_output, supplier_cached, customer_input, customer_output, customer_cached = item["rates"]
+            self._ensure_price_version(
+                "apiyi", model, customer_input, customer_output, customer_cached
+            )
+            self._ensure_supplier_cost_version(
+                "apiyi-canary",
+                "apiyi",
+                model,
+                supplier_input,
+                supplier_output,
+                supplier_cached,
+            )
+            with self.platform.database.transaction() as connection:
+                connection.execute(
+                    """INSERT INTO routes(supplier_id,provider,model,upstream_model,
+                    endpoint,priority,weight,cost_input,cost_output,cached_cost,health,enabled)
+                    VALUES ('apiyi-canary','apiyi',?,?,?,10,100,?,?,?,'healthy',1)
+                    ON CONFLICT(supplier_id,model) DO UPDATE SET
+                    upstream_model=excluded.upstream_model,endpoint=excluded.endpoint,
+                    priority=excluded.priority,weight=excluded.weight,
+                    cost_input=excluded.cost_input,cost_output=excluded.cost_output,
+                    cached_cost=excluded.cached_cost,health='healthy',enabled=1""",
+                    (
+                        model,
+                        model,
+                        "mock://apiyi-canary",
+                        supplier_input,
+                        supplier_output,
+                        supplier_cached,
+                    ),
+                )
+        return frozenset(allowed)
+
+    def _ensure_price_version(
+        self, provider: str, model: str, input_rate: int, output_rate: int, cached_rate: int
+    ) -> None:
+        with self.platform.database.read() as connection:
+            current = connection.execute(
+                """SELECT input_per_million_micro,output_per_million_micro,
+                cached_per_million_micro FROM price_versions
+                WHERE provider=? AND model=? AND active=1 ORDER BY id DESC LIMIT 1""",
+                (provider, model),
+            ).fetchone()
+        if current and tuple(int(value) for value in current) == (
+            input_rate,
+            output_rate,
+            cached_rate,
+        ):
+            return
+        self.platform.create_price_version(provider, model, input_rate, output_rate, cached_rate)
+
+    def _ensure_supplier_cost_version(
+        self,
+        supplier_id: str,
+        provider: str,
+        model: str,
+        input_rate: int,
+        output_rate: int,
+        cached_rate: int,
+    ) -> None:
+        with self.platform.database.read() as connection:
+            current = connection.execute(
+                """SELECT input_per_million_micro,output_per_million_micro,
+                cached_per_million_micro FROM supplier_cost_versions
+                WHERE supplier_id=? AND model=? AND active=1 ORDER BY id DESC LIMIT 1""",
+                (supplier_id, model),
+            ).fetchone()
+        if current and tuple(int(value) for value in current) == (
+            input_rate,
+            output_rate,
+            cached_rate,
+        ):
+            return
+        self.platform.create_supplier_cost_version(
+            supplier_id, provider, model, input_rate, output_rate, cached_rate
+        )
 
     def _initialize_bridge_schema(self) -> None:
         with self.platform.database.transaction() as connection:
@@ -217,6 +376,8 @@ class HybridAuthority:
     def _identity(self, external_user: str, external_key: str) -> tuple[int, int]:
         if not external_user or not external_key:
             raise ValueError("external identity is required")
+        if self.provider_mode == "apiyi" and external_user not in self.allowed_users:
+            raise PermissionError("user is not approved for APIYI Canary")
         with self.identity_lock:
             with self.platform.database.read() as connection:
                 row = connection.execute(
@@ -240,11 +401,17 @@ class HybridAuthority:
             user_id = self.platform.register_user(
                 f"sub2api-{external_user}@isolated.invalid", password
             )
-            self.platform.add_test_credit(
-                user_id,
-                int(os.getenv("AI16T_INITIAL_CREDIT_MICRO", "200000")),
-                f"sub2api-bootstrap-{external_user}",
-            )
+            initial_credit = int(os.getenv("AI16T_INITIAL_CREDIT_MICRO", "200000"))
+            if self.provider_mode == "apiyi":
+                # Canary balances are explicitly non-purchasable test grants. The
+                # Ledger remains authoritative and the callback is idempotent.
+                self.platform.ledger.test_credit(
+                    user_id, initial_credit, f"apiyi-canary-credit-{external_user}"
+                )
+            else:
+                self.platform.add_test_credit(
+                    user_id, initial_credit, f"sub2api-bootstrap-{external_user}"
+                )
             api_key_id, _discarded_raw = self.platform.create_api_key(user_id)
             with self.platform.database.transaction() as connection:
                 connection.execute(
@@ -269,16 +436,24 @@ class HybridAuthority:
             return cursor.rowcount == 0
 
     @staticmethod
-    def _prompt(payload_b64: str) -> str:
-        payload = json.loads(base64.b64decode(payload_b64, validate=True))
-        messages = payload.get("messages", [])
-        if not isinstance(messages, list) or not messages:
-            raise ValueError("messages are required")
-        return "\n".join(
-            str(item.get("content", ""))
-            for item in messages
-            if isinstance(item, dict) and item.get("content")
-        )
+    def _request_payload(payload_b64: str) -> dict[str, Any]:
+        raw = base64.b64decode(payload_b64, validate=True)
+        payload = json.loads(raw)
+        if not isinstance(payload, dict):
+            raise ValueError("request payload must be an object")
+        endpoint = payload.get("_ai16t_endpoint", "chat.completions")
+        if endpoint == "chat.completions":
+            messages = payload.get("messages")
+            if not isinstance(messages, list) or not messages:
+                raise ValueError("messages are required")
+        elif endpoint == "responses":
+            if payload.get("input") in (None, "", []):
+                raise ValueError("responses input is required")
+        else:
+            raise ValueError("unsupported endpoint")
+        if type(payload.get("stream", False)) is not bool:
+            raise ValueError("stream must be a boolean")
+        return payload
 
     def execute(self, payload: dict[str, Any]) -> dict[str, Any]:
         user_id, api_key_id = self._identity(
@@ -287,29 +462,68 @@ class HybridAuthority:
         idempotency_key = str(payload.get("IdempotencyKey", ""))
         request_hash = str(payload.get("RequestHash", ""))
         model = str(payload.get("Model", ""))
-        if not idempotency_key or not request_hash or model != "gpt-4o-mini":
+        request_payload = self._request_payload(str(payload.get("Payload", "")))
+        if (
+            not idempotency_key
+            or not request_hash
+            or model not in self.allowed_models
+            or request_payload.get("model") != model
+        ):
             raise ValueError("invalid authority request")
+        failure_plan = payload.get("FailurePlan") or None
+        if self.provider_mode == "apiyi" and failure_plan:
+            raise PermissionError("test hooks are disabled for APIYI")
         authoritative_request_id = "sub2_" + hashlib.sha256(
             f"{user_id}\0{idempotency_key}".encode()
         ).hexdigest()[:40]
         replay = self._request_replay(authoritative_request_id)
+        prompt = json.dumps(request_payload, separators=(",", ":"), ensure_ascii=False)
+        max_output = request_payload.get(
+            "max_output_tokens",
+            request_payload.get("max_completion_tokens", request_payload.get("max_tokens", 256)),
+        )
+        if not isinstance(max_output, int) or not 1 <= max_output <= 4096:
+            raise ValueError("max output tokens are invalid")
+        if request_payload.get("stream", False):
+            chunks = list(
+                self.platform.process_stream_request(
+                    user_id=user_id,
+                    api_key_id=api_key_id,
+                    provider=self.ledger_provider,
+                    model=model,
+                    prompt=prompt,
+                    request_id=authoritative_request_id,
+                    idempotency_key=idempotency_key,
+                    failure_plan=failure_plan,
+                    max_input_tokens=4096,
+                    max_output_tokens=max_output,
+                )
+            )
+            settlement = self.platform._existing_settlement(authoritative_request_id)
+            response = "".join(chunk.content for chunk in chunks).encode()
+            return self._result(settlement, replay, response, "text/event-stream")
         settlement = self.platform.process_request(
             user_id=user_id,
             api_key_id=api_key_id,
-            provider="openai",
+            provider=self.ledger_provider,
             model=model,
-            prompt=self._prompt(str(payload.get("Payload", ""))),
+            prompt=prompt,
             request_id=authoritative_request_id,
             idempotency_key=idempotency_key,
-            failure_plan=payload.get("FailurePlan") or None,
+            failure_plan=failure_plan,
+            max_input_tokens=4096,
+            max_output_tokens=max_output,
         )
         return self._result(settlement, replay)
 
-    def _result(self, settlement: Any, replay: bool) -> dict[str, Any]:
+    def _result(
+        self,
+        settlement: Any,
+        replay: bool,
+        response_override: bytes | None = None,
+        content_type: str = "application/json",
+    ) -> dict[str, Any]:
         with self.platform.database.read() as connection:
-            request = connection.execute(
-                "SELECT * FROM requests WHERE request_id=?", (settlement.request_id,)
-            ).fetchone()
             ledger = connection.execute(
                 """SELECT transaction_id FROM ledger_entries WHERE request_id=?
                 ORDER BY id DESC LIMIT 1""",
@@ -321,32 +535,35 @@ class HybridAuthority:
             ).fetchone()
         refund = int(refund_row["value"]) if refund_row else 0
         revenue = int(settlement.revenue_micro)
-        response = json.dumps(
-            {
-                "id": settlement.request_id,
-                "object": "chat.completion",
-                "model": "ai16t-mock",
-                "choices": [
-                    {
-                        "index": 0,
-                        "message": {"role": "assistant", "content": settlement.content},
-                        "finish_reason": "stop",
-                    }
-                ],
-                "usage": {
-                    "prompt_tokens": settlement.usage.input_tokens,
-                    "completion_tokens": settlement.usage.output_tokens,
-                    "total_tokens": settlement.usage.total_tokens,
+        response = response_override or decode_raw_response(settlement.content)
+        if response is None:
+            response = json.dumps(
+                {
+                    "id": settlement.request_id,
+                    "object": "chat.completion",
+                    "model": "ai16t-mock",
+                    "choices": [
+                        {
+                            "index": 0,
+                            "message": {"role": "assistant", "content": settlement.content},
+                            "finish_reason": "stop",
+                        }
+                    ],
+                    "usage": {
+                        "prompt_tokens": settlement.usage.input_tokens,
+                        "completion_tokens": settlement.usage.output_tokens,
+                        "total_tokens": settlement.usage.total_tokens,
+                    },
                 },
-            },
-            separators=(",", ":"),
-        ).encode()
+                separators=(",", ":"),
+            ).encode()
         settled = settlement.status in ("COMPLETED", "PARTIAL_SETTLED")
         return {
             "AuthoritativeRequestID": settlement.request_id,
             "LedgerReference": str(ledger["transaction_id"]) if ledger else "",
             "Status": "SETTLED" if settled else "FAILED_RELEASED",
             "Response": base64.b64encode(response).decode() if settled else "",
+            "ContentType": content_type,
             "InputTokens": settlement.usage.input_tokens,
             "OutputTokens": settlement.usage.output_tokens,
             "CustomerChargeMicro": revenue,
@@ -356,6 +573,11 @@ class HybridAuthority:
             "NetRevenueMicro": revenue - refund,
             "Replay": replay,
         }
+
+    def ready(self) -> None:
+        if self.secret_resolver is not None:
+            self.secret_resolver.ready()
+            self.secret_resolver.resolve(self.secret_reference)
 
     def projection(self, external_user: str) -> dict[str, Any]:
         with self.platform.database.read() as connection:
@@ -463,6 +685,7 @@ class Handler(BaseHTTPRequestHandler):
                 return
             parsed = urlsplit(self.path)
             if self.command == "GET" and parsed.path == "/internal/v1/health":
+                AUTHORITY.ready()
                 self._write(200, {"status": "ok", "authority": "LEDGER_WINS"})
                 return
             if self.command == "GET" and parsed.path == "/internal/v1/projection":

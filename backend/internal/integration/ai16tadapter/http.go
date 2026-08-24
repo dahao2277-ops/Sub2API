@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -162,6 +163,43 @@ func (s StaticIdentitySource) AuthenticateAPIKey(_ context.Context, fingerprint 
 type StaticModelSource struct {
 	PublicModel string
 	CoreModel   string
+}
+
+type MapModelSource struct {
+	mappings map[string]string
+}
+
+func NewMapModelSource(mappings map[string]string) (*MapModelSource, error) {
+	if len(mappings) == 0 || len(mappings) > 6 {
+		return nil, ErrInvalidRequest
+	}
+	cloned := make(map[string]string, len(mappings))
+	for publicModel, coreModel := range mappings {
+		publicModel = strings.TrimSpace(publicModel)
+		coreModel = strings.TrimSpace(coreModel)
+		if publicModel == "" || coreModel == "" {
+			return nil, ErrInvalidRequest
+		}
+		cloned[publicModel] = coreModel
+	}
+	return &MapModelSource{mappings: cloned}, nil
+}
+
+func (s *MapModelSource) ResolveModel(_ context.Context, _ string, requested string) (ModelMapping, error) {
+	coreModel, ok := s.mappings[requested]
+	if !ok {
+		return ModelMapping{}, ErrModelMappingMissing
+	}
+	return ModelMapping{PublicModel: requested, CoreModel: coreModel}, nil
+}
+
+func (s *MapModelSource) PublicModels() []string {
+	models := make([]string, 0, len(s.mappings))
+	for model := range s.mappings {
+		models = append(models, model)
+	}
+	slices.Sort(models)
+	return models
 }
 
 func (s StaticModelSource) ResolveModel(_ context.Context, _ string, requested string) (ModelMapping, error) {

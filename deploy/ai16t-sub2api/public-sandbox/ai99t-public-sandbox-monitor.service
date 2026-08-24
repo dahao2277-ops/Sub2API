@@ -1,0 +1,15 @@
+[Unit]
+Description=AI99T Platform B public sandbox health monitor
+Requires=docker.service
+After=docker.service network-online.target
+ConditionPathExists=/srv/ai99t/current/sub2api/deploy/ai16t-sub2api/public-sandbox/monitor.py
+
+[Service]
+Type=oneshot
+User=root
+Group=root
+WorkingDirectory=/srv/ai99t/current/sub2api/deploy/ai16t-sub2api/public-sandbox
+ExecStart=/usr/bin/python3 /srv/ai99t/current/sub2api/deploy/ai16t-sub2api/public-sandbox/monitor.py
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true

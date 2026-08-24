@@ -75,6 +75,7 @@ type CoreResult struct {
 	LedgerReference        string
 	Status                 OutcomeStatus
 	Response               []byte
+	ContentType            string
 	InputTokens            int64
 	OutputTokens           int64
 	CustomerChargeMicro    int64

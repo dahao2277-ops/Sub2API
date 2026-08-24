@@ -63,3 +63,17 @@ func TestKeyedFingerprintAndStaticIdentityFailClosed(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "7", principal.UserID)
 }
+
+func TestMapModelSourceUsesVerifiedPassThroughMappings(t *testing.T) {
+	source, err := NewMapModelSource(map[string]string{
+		"gpt-low":      "gpt-low",
+		"gpt-balanced": "gpt-balanced",
+	})
+	require.NoError(t, err)
+	require.Equal(t, []string{"gpt-balanced", "gpt-low"}, source.PublicModels())
+	mapping, err := source.ResolveModel(context.Background(), "", "gpt-low")
+	require.NoError(t, err)
+	require.Equal(t, ModelMapping{PublicModel: "gpt-low", CoreModel: "gpt-low"}, mapping)
+	_, err = source.ResolveModel(context.Background(), "", "not-allowed")
+	require.ErrorIs(t, err, ErrModelMappingMissing)
+}

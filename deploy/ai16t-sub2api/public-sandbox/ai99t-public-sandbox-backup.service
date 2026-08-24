@@ -1,0 +1,16 @@
+[Unit]
+Description=AI99T Platform B public sandbox backup and restore verification
+Requires=docker.service
+After=docker.service network-online.target
+ConditionPathExists=/srv/ai99t/current/sub2api/deploy/ai16t-sub2api/public-sandbox/backup_restore_verify.py
+
+[Service]
+Type=oneshot
+User=root
+Group=root
+WorkingDirectory=/srv/ai99t/current/sub2api/deploy/ai16t-sub2api/public-sandbox
+Environment=AI99T_BACKUP_DIR=/srv/ai99t/backups
+ExecStart=/usr/bin/python3 /srv/ai99t/current/sub2api/deploy/ai16t-sub2api/public-sandbox/backup_restore_verify.py
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true

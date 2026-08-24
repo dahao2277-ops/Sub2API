@@ -1,0 +1,36 @@
+{
+	admin off
+	email {$AI99T_ACME_EMAIL}
+}
+
+{$AI99T_DOMAIN} {
+	encode zstd gzip
+
+	header {
+		-Server
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		Permissions-Policy "camera=(), microphone=(), geolocation=(), payment=()"
+	}
+
+	log {
+		output stdout
+		format json
+	}
+
+	reverse_proxy {$AI99T_ACTIVE_UPSTREAM} {
+		health_uri /ready
+		health_interval 15s
+		health_timeout 3s
+		transport http {
+			dial_timeout 5s
+			response_header_timeout 30s
+		}
+	}
+}
+
+www.{$AI99T_DOMAIN} {
+	redir https://{$AI99T_DOMAIN}{uri} permanent
+}

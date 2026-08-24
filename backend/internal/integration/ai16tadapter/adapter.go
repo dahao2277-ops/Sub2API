@@ -266,6 +266,9 @@ func validateCoreResult(result CoreResult) error {
 		if strings.TrimSpace(result.LedgerReference) == "" {
 			return ErrInvalidAuthorityResult
 		}
+		if result.ContentType != "" && result.ContentType != "application/json" && result.ContentType != "text/event-stream" {
+			return ErrInvalidAuthorityResult
+		}
 	case OutcomeFailed:
 		if result.CustomerChargeMicro != 0 {
 			return ErrInvalidAuthorityResult
