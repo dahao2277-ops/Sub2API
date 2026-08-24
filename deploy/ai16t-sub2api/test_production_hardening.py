@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import unittest
+from pathlib import Path
 from unittest.mock import patch
 
 from apiyi_provider import APIYIProvider, decode_raw_response
@@ -176,6 +177,17 @@ class APIYIProviderTests(unittest.TestCase):
             (chunks[-1].usage_delta.input_tokens, chunks[-1].usage_delta.output_tokens),
             (9, 4),
         )
+
+
+class DockerBuildContextTests(unittest.TestCase):
+    def test_nested_runtime_directories_are_excluded_from_build_context(self) -> None:
+        repository = Path(__file__).resolve().parents[2]
+        rules = {
+            line.strip()
+            for line in (repository / ".dockerignore").read_text(encoding="utf-8").splitlines()
+            if line.strip() and not line.lstrip().startswith("#")
+        }
+        self.assertIn("**/.runtime/", rules)
 
 
 if __name__ == "__main__":
