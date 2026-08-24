@@ -189,21 +189,30 @@ def run() -> dict[str, object]:
         encrypted_payload = secret_local.read_text(encoding="utf-8")
         if "sk-" in encrypted_payload:
             raise RuntimeError("encrypted SecretProvider backup contains a plaintext key marker")
-        secret_verify = compose_optional(
-            "run",
-            "--rm",
-            "--no-deps",
-            "--entrypoint",
-            "/app/ai16t-secret-provider",
-            "--user",
-            "0:0",
-            "-e",
-            "AI16T_SECRET_DATA_DIR=/verify-data",
-            "-v",
-            f"{secret_backup_dir}:/verify-data",
-            "secret-provider",
-            "verify-store",
-        )
+        # The production sidecar intentionally runs without DAC override. Give
+        # its fixed non-root UID temporary ownership of this ciphertext-only
+        # verification copy, then restore root ownership immediately afterward.
+        os.chown(secret_backup_dir, 65532, 65532)
+        os.chown(secret_local, 65532, 65532)
+        try:
+            secret_verify = compose_optional(
+                "run",
+                "--rm",
+                "--no-deps",
+                "--entrypoint",
+                "/app/ai16t-secret-provider",
+                "--user",
+                "65532:65532",
+                "-e",
+                "AI16T_SECRET_DATA_DIR=/verify-data",
+                "-v",
+                f"{secret_backup_dir}:/verify-data",
+                "secret-provider",
+                "verify-store",
+            )
+        finally:
+            os.chown(secret_local, 0, 0)
+            os.chown(secret_backup_dir, 0, 0)
         if secret_verify.returncode != 0 or "SECRET_STORE_VERIFY=PASS" not in secret_verify.stdout:
             raise RuntimeError("encrypted SecretProvider backup restore verification failed")
 
