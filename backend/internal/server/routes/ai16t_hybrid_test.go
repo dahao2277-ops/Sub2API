@@ -1,11 +1,16 @@
 package routes
 
 import (
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"testing"
 
+	"github.com/Wei-Shaw/sub2api/internal/integration/ai16tadapter"
 	"github.com/Wei-Shaw/sub2api/internal/service"
+	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
 )
 
@@ -50,4 +55,38 @@ func TestAI16TAPIKeyRevocationIgnoresOnlySub2APIQuotaState(t *testing.T) {
 	require.True(t, ai16tAPIKeyRevoked(service.StatusAPIKeyDisabled))
 	require.True(t, ai16tAPIKeyRevoked(service.StatusAPIKeyExpired))
 	require.True(t, ai16tAPIKeyRevoked("unknown"))
+}
+
+func TestAI16TSettledStreamReplayReturnsExplicitConflict(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	recorder := httptest.NewRecorder()
+	context, _ := gin.CreateTestContext(recorder)
+	result := ai16tadapter.Result{Core: ai16tadapter.CoreResult{
+		AuthoritativeRequestID: "request-settled-replay",
+		Status:                 ai16tadapter.OutcomeSettled,
+		Replay:                 true,
+	}}
+
+	require.True(t, writeAI16TStreamReplayUnavailable(context, result))
+	require.Equal(t, http.StatusConflict, recorder.Code)
+	require.Equal(t, "true", recorder.Header().Get("X-Idempotency-Replayed"))
+	require.Equal(t, "AI16T_COMMERCIAL_CORE", recorder.Header().Get("X-AI16T-Ledger-Authority"))
+	var payload struct {
+		Error struct {
+			Code string `json:"code"`
+		} `json:"error"`
+		RequestID        string `json:"request_id"`
+		SettlementStatus string `json:"settlement_status"`
+	}
+	require.NoError(t, json.Unmarshal(recorder.Body.Bytes(), &payload))
+	require.Equal(t, "AI16T_STREAM_REPLAY_UNAVAILABLE", payload.Error.Code)
+	require.Equal(t, "request-settled-replay", payload.RequestID)
+	require.Equal(t, string(ai16tadapter.OutcomeSettled), payload.SettlementStatus)
+}
+
+func TestAI16TNonReplayWithoutFramesFallsThrough(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	recorder := httptest.NewRecorder()
+	context, _ := gin.CreateTestContext(recorder)
+	require.False(t, writeAI16TStreamReplayUnavailable(context, ai16tadapter.Result{}))
 }

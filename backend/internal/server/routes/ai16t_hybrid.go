@@ -257,6 +257,9 @@ func (h *ai16tHybridHandler) executeEndpoint(c *gin.Context, endpoint string) {
 			return
 		}
 		if !streamStarted {
+			if writeAI16TStreamReplayUnavailable(c, result) {
+				return
+			}
 			c.JSON(http.StatusBadGateway, gin.H{"error": gin.H{"code": "AI16T_PROVIDER_FAILED", "message": "provider request failed"}})
 			return
 		}
@@ -297,6 +300,29 @@ func (h *ai16tHybridHandler) executeEndpoint(c *gin.Context, endpoint string) {
 		return
 	}
 	c.JSON(http.StatusBadGateway, gin.H{"error": gin.H{"code": "AI16T_PROVIDER_FAILED", "message": "provider request failed"}})
+}
+
+// Successful streaming response bodies are deliberately not retained by the
+// Commercial Core. A repeated idempotency key therefore returns an explicit
+// finalized-state response instead of a misleading upstream 502. The client
+// may inspect the authoritative request and settlement status, while the Core
+// guarantees that no provider dispatch or second Ledger settlement occurs.
+func writeAI16TStreamReplayUnavailable(c *gin.Context, result ai16tadapter.Result) bool {
+	if !result.Core.Replay {
+		return false
+	}
+	c.Header("X-AI16T-Ledger-Request-ID", result.Core.AuthoritativeRequestID)
+	c.Header("X-AI16T-Ledger-Authority", "AI16T_COMMERCIAL_CORE")
+	c.Header("X-Idempotency-Replayed", "true")
+	c.JSON(http.StatusConflict, gin.H{
+		"error": gin.H{
+			"code":    "AI16T_STREAM_REPLAY_UNAVAILABLE",
+			"message": "stream request already finalized; original stream body is not retained",
+		},
+		"request_id":        result.Core.AuthoritativeRequestID,
+		"settlement_status": result.Core.Status,
+	})
+	return true
 }
 
 func (h *ai16tHybridHandler) listModels(c *gin.Context) {
