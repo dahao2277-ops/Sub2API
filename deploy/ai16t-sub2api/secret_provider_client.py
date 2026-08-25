@@ -21,6 +21,7 @@ class SecretMaterial:
     reference: str
     version: int
     _value: str
+    fingerprint: str = ""
 
     def reveal(self) -> str:
         return self._value
@@ -47,7 +48,9 @@ class _UnixHTTPConnection(http.client.HTTPConnection):
 class UnixSecretResolver:
     """Resolve one allowlisted reference over a private mode-0600 Unix socket."""
 
-    def __init__(self, socket_path: str, allowed_references: set[str], timeout: float = 2.0):
+    def __init__(
+        self, socket_path: str, allowed_references: set[str], timeout: float = 2.0
+    ):
         self.socket_path = str(Path(socket_path))
         self.allowed_references = frozenset(allowed_references)
         self.timeout = timeout
@@ -93,9 +96,16 @@ class UnixSecretResolver:
             or payload["version"] < 1
             or not isinstance(payload.get("value"), str)
             or not payload["value"]
+            or not isinstance(payload.get("fingerprint"), str)
+            or len(payload["fingerprint"]) != 64
         ):
             raise SecretProviderUnavailable("secret provider response is invalid")
-        return SecretMaterial(reference, payload["version"], payload["value"])
+        return SecretMaterial(
+            reference,
+            payload["version"],
+            payload["value"],
+            payload["fingerprint"],
+        )
 
     def _validate_socket(self) -> None:
         try:

@@ -45,7 +45,7 @@ x-sub2api-slot: &sub2api-slot
     AI16T_HYBRID_ENABLED: "true"
     AI16T_ISOLATED_TEST_MODE: "false"
     AI16T_ISOLATED_TEST_HOOKS_ENABLED: "false"
-    AI16T_CORE_URL: http://commercial-core:8787
+    AI16T_CORE_URL: ${AI16T_ACTIVE_CORE_URL:-http://commercial-core:8787}
     AI16T_CORE_SIGNING_KEY_FILE: /run/ai99t/core_signing_key
     AI16T_FINGERPRINT_KEY_FILE: /run/ai99t/fingerprint_key
     AI16T_PROVIDER_MODE: ${AI16T_PROVIDER_MODE:-mock}
@@ -68,6 +68,66 @@ x-sub2api-slot: &sub2api-slot
     - platform_b_edge
   healthcheck:
     test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:8080/ready"]
+    interval: 10s
+    timeout: 3s
+    retries: 30
+    start_period: 15s
+
+x-commercial-core-slot: &commercial-core-slot
+  restart: unless-stopped
+  init: true
+  entrypoint: ["python", "/bridge/core_bridge.py"]
+  read_only: true
+  user: "65532:65532"
+  cap_drop:
+    - ALL
+  security_opt:
+    - no-new-privileges:true
+  tmpfs:
+    - /tmp:rw,noexec,nosuid,nodev,mode=1777
+  environment: &commercial-core-environment
+    PYTHONPATH: /app:/opt/cpython/lib/python3.12/site-packages
+    TP_BIND_HOST: 0.0.0.0
+    TP_CONTAINER_ISOLATION_ACK: "1"
+    TP_DATABASE_PATH: /data/token-platform.sqlite3
+    TP_RUNTIME_MODE: ${AI16T_CORE_RUNTIME_MODE:-isolated-test}
+    TP_TEST_MODE: ${AI16T_CORE_TEST_MODE:-mock-only-enabled}
+    TP_MIN_PROFIT_MARGIN_PPM: "100000"
+    AI16T_CORE_SIGNING_KEY_FILE: /run/ai99t/core_signing_key
+    AI16T_MOCK_PROVIDER_KEY_FILE: /run/ai99t/mock_provider_key
+    AI16T_MOCK_PROVIDER_URL: http://mock-provider:9090
+    AI16T_PROVIDER_MODE: ${AI16T_PROVIDER_MODE:-mock}
+    AI16T_PROVIDER_BASE_URL: https://api.apiyi.com/v1
+    AI16T_PROVIDER_SECRET_REF: ${AI16T_PROVIDER_SECRET_REF:-apiyi/prod-canary}
+    AI16T_PROVIDER_TIMEOUT_SECONDS: "20"
+    AI16T_SECRET_SOCKET: /run/ai16t-secret/provider.sock
+    AI16T_MODEL_CONFIG_FILE: /run/ai99t/apiyi_model_config
+    AI16T_CANARY_USER_REFERENCES: ${AI16T_CANARY_USER_REFERENCES:-}
+    AI16T_INITIAL_CREDIT_MICRO: ${AI16T_INITIAL_CREDIT_MICRO:-200000}
+    AI16T_CORE_RELEASE_COMMIT: ${AI16T_CORE_RELEASE_COMMIT:?AI16T_CORE_RELEASE_COMMIT is required}
+    AI16T_BRIDGE_RELEASE_COMMIT: ${SUB2API_RELEASE_COMMIT:?SUB2API_RELEASE_COMMIT is required}
+    TP_MAX_STREAM_ZERO_USAGE_CONSECUTIVE: "1024"
+    TP_MAX_STREAM_ZERO_USAGE_TOTAL: "1024"
+  depends_on:
+    mock-provider:
+      condition: service_healthy
+    secret-provider:
+      condition: service_healthy
+  volumes:
+    - core_data:/data
+    - ./.runtime/core_signing_key:/run/ai99t/core_signing_key:ro
+    - ./.runtime/mock_provider_key:/run/ai99t/mock_provider_key:ro
+    - ${AI99T_MODEL_CONFIG_CORE_FILE:?AI99T_MODEL_CONFIG_CORE_FILE is required}:/run/ai99t/apiyi_model_config:ro
+    - ${AI99T_SECRET_RUN_DIR:?AI99T_SECRET_RUN_DIR is required}:/run/ai16t-secret
+  networks:
+    - platform_b_private
+    - platform_b_edge
+  healthcheck:
+    test:
+      - CMD
+      - python
+      - -c
+      - "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8787/ready', timeout=2).read()"
     interval: 10s
     timeout: 3s
     retries: 30
@@ -139,17 +199,25 @@ services:
       - platform_b_private
 
   commercial-core:
-    build:
-      context: ${AI16T_CORE_SOURCE_DIR:?AI16T_CORE_SOURCE_DIR is required}
-      dockerfile: Dockerfile
-      args:
-        TP_OCI_REVISION: ${AI16T_CORE_RELEASE_COMMIT:?AI16T_CORE_RELEASE_COMMIT is required}
-        TP_OCI_TREE: ${AI16T_CORE_RELEASE_TREE:?AI16T_CORE_RELEASE_TREE is required}
-        TP_EVIDENCE_RUN_ID: ai99t-platform-b-public-sandbox
-    image: ai99t/commercial-core:${AI16T_CORE_IMAGE_TAG:?AI16T_CORE_IMAGE_TAG is required}
-    restart: unless-stopped
+    <<: *commercial-core-slot
+    image: ${AI16T_CORE_BLUE_IMAGE:?AI16T_CORE_BLUE_IMAGE is required}
+    environment:
+      <<: *commercial-core-environment
+      AI16T_CORE_SLOT: blue
+
+  commercial-core-green:
+    <<: *commercial-core-slot
+    image: ${AI16T_CORE_GREEN_IMAGE:?AI16T_CORE_GREEN_IMAGE is required}
+    environment:
+      <<: *commercial-core-environment
+      AI16T_CORE_SLOT: green
+
+  apiyi-auth-probe:
+    image: ${AI16T_CORE_GREEN_IMAGE:?AI16T_CORE_GREEN_IMAGE is required}
+    profiles: ["diagnostic"]
+    restart: "no"
     init: true
-    entrypoint: ["python", "/bridge/core_bridge.py"]
+    entrypoint: ["python", "/bridge/apiyi_auth_probe.py"]
     read_only: true
     user: "65532:65532"
     cap_drop:
@@ -160,56 +228,23 @@ services:
       - /tmp:rw,noexec,nosuid,nodev,mode=1777
     environment:
       PYTHONPATH: /app:/opt/cpython/lib/python3.12/site-packages
-      TP_BIND_HOST: 0.0.0.0
-      TP_CONTAINER_ISOLATION_ACK: "1"
-      TP_DATABASE_PATH: /data/token-platform.sqlite3
-      TP_RUNTIME_MODE: ${AI16T_CORE_RUNTIME_MODE:-isolated-test}
-      TP_TEST_MODE: ${AI16T_CORE_TEST_MODE:-mock-only-enabled}
-      TP_MIN_PROFIT_MARGIN_PPM: "100000"
-      AI16T_CORE_SIGNING_KEY_FILE: /run/ai99t/core_signing_key
-      AI16T_MOCK_PROVIDER_KEY_FILE: /run/ai99t/mock_provider_key
-      AI16T_MOCK_PROVIDER_URL: http://mock-provider:9090
-      AI16T_PROVIDER_MODE: ${AI16T_PROVIDER_MODE:-mock}
-      AI16T_PROVIDER_BASE_URL: https://api.apiyi.com/v1
-      AI16T_PROVIDER_SECRET_REF: ${AI16T_PROVIDER_SECRET_REF:-apiyi/prod-canary}
-      AI16T_PROVIDER_TIMEOUT_SECONDS: "20"
       AI16T_SECRET_SOCKET: /run/ai16t-secret/provider.sock
-      AI16T_MODEL_CONFIG_FILE: /run/ai99t/apiyi_model_config
-      AI16T_CANARY_USER_REFERENCES: ${AI16T_CANARY_USER_REFERENCES:-}
-      AI16T_INITIAL_CREDIT_MICRO: ${AI16T_INITIAL_CREDIT_MICRO:-200000}
-      TP_MAX_STREAM_ZERO_USAGE_CONSECUTIVE: "1024"
-      TP_MAX_STREAM_ZERO_USAGE_TOTAL: "1024"
+      AI16T_PROVIDER_SECRET_REF: ${AI16T_PROVIDER_SECRET_REF:?AI16T_PROVIDER_SECRET_REF is required}
+      AI16T_PROVIDER_TIMEOUT_SECONDS: "20"
+      AI99T_EXPECTED_EGRESS_IP: ${AI99T_EXPECTED_EGRESS_IP:?AI99T_EXPECTED_EGRESS_IP is required}
+      AI16T_DIAGNOSTIC_TOKEN_STATUS: ${AI16T_DIAGNOSTIC_TOKEN_STATUS:-unknown}
+      AI16T_DIAGNOSTIC_TOKEN_EXPIRY: ${AI16T_DIAGNOSTIC_TOKEN_EXPIRY:-unknown}
+      AI16T_DIAGNOSTIC_QUOTA_STATE: ${AI16T_DIAGNOSTIC_QUOTA_STATE:-unknown}
+      AI16T_DIAGNOSTIC_GROUP: ${AI16T_DIAGNOSTIC_GROUP:-unknown}
+      AI16T_DIAGNOSTIC_MODEL_WHITELIST: ${AI16T_DIAGNOSTIC_MODEL_WHITELIST:-unknown}
+      AI16T_DIAGNOSTIC_IP_WHITELIST: ${AI16T_DIAGNOSTIC_IP_WHITELIST:-unknown}
     depends_on:
-      mock-provider:
-        condition: service_healthy
       secret-provider:
         condition: service_healthy
     volumes:
-      - core_data:/data
-      - ../core_bridge.py:/bridge/core_bridge.py:ro
-      - ../apiyi_provider.py:/bridge/apiyi_provider.py:ro
-      - ../secret_provider_client.py:/bridge/secret_provider_client.py:ro
-      - ../core_evidence.py:/evidence/core_evidence.py:ro
-      - ../staging/core_backup.py:/ops/core_backup.py:ro
-      - ./.runtime/core_signing_key:/run/ai99t/core_signing_key:ro
-      - ./.runtime/mock_provider_key:/run/ai99t/mock_provider_key:ro
-      - ${AI99T_MODEL_CONFIG_CORE_FILE:?AI99T_MODEL_CONFIG_CORE_FILE is required}:/run/ai99t/apiyi_model_config:ro
       - ${AI99T_SECRET_RUN_DIR:?AI99T_SECRET_RUN_DIR is required}:/run/ai16t-secret
     networks:
-      - platform_b_private
-      # Commercial Core is the sole production component allowed to call the
-      # exact allowlisted APIYI HTTPS origin. No host port is published.
       - platform_b_edge
-    healthcheck:
-      test:
-        - CMD
-        - python
-        - -c
-        - "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8787/health', timeout=2).read()"
-      interval: 10s
-      timeout: 3s
-      retries: 30
-      start_period: 15s
 
   secret-provider:
     image: ai99t/sub2api:${SUB2API_IMAGE_TAG:?SUB2API_IMAGE_TAG is required}

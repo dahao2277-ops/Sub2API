@@ -103,6 +103,9 @@ printf '%s' "$core_release_tree" | grep -Eq '^[0-9a-f]{40}$' || {
   exit 1
 }
 core_image_tag="$(printf '%s' "$core_release_commit" | cut -c1-12)"
+core_blue_image="${AI16T_CORE_BLUE_IMAGE:-ai99t/commercial-core-runtime:blue-${core_image_tag}-${release_tag}}"
+core_green_image="${AI16T_CORE_GREEN_IMAGE:-ai99t/commercial-core-runtime:green-${core_image_tag}-${release_tag}}"
+egress_ip="${AI99T_EXPECTED_EGRESS_IP:-}"
 case "$provider_mode" in
   mock)
     core_runtime_mode="isolated-test"
@@ -111,6 +114,10 @@ case "$provider_mode" in
   apiyi)
     core_runtime_mode="normal"
     core_test_mode="disabled"
+    printf '%s' "$egress_ip" | grep -Eq '^[0-9]{1,3}(\.[0-9]{1,3}){3}$' || {
+      echo "AI99T_EXPECTED_EGRESS_IP must be set for APIYI mode" >&2
+      exit 1
+    }
     ;;
   *) echo "Unsupported AI16T provider mode" >&2; exit 1 ;;
 esac
@@ -118,18 +125,22 @@ esac
   echo "AI99T_DOMAIN=$domain"
   echo "AI99T_ACME_EMAIL=$admin_email"
   echo "AI99T_ACTIVE_UPSTREAM=sub2api-blue:8080"
+  echo "AI16T_ACTIVE_CORE_URL=http://commercial-core:8787"
   echo "SUB2API_RELEASE_COMMIT=$release_commit"
   echo "SUB2API_IMAGE_TAG=$release_tag"
   echo "AI16T_CORE_SOURCE_DIR=$core_source"
   echo "AI16T_CORE_RELEASE_COMMIT=$core_release_commit"
   echo "AI16T_CORE_RELEASE_TREE=$core_release_tree"
   echo "AI16T_CORE_IMAGE_TAG=$core_image_tag"
+  echo "AI16T_CORE_BLUE_IMAGE=$core_blue_image"
+  echo "AI16T_CORE_GREEN_IMAGE=$core_green_image"
   echo "AI16T_PROVIDER_MODE=$provider_mode"
   echo "AI16T_CORE_RUNTIME_MODE=$core_runtime_mode"
   echo "AI16T_CORE_TEST_MODE=$core_test_mode"
   echo "AI16T_PROVIDER_SECRET_REF=${AI16T_PROVIDER_SECRET_REF:-apiyi/prod-canary}"
   echo "AI16T_CANARY_USER_REFERENCES=${AI16T_CANARY_USER_REFERENCES:-}"
   echo "AI16T_INITIAL_CREDIT_MICRO=${AI16T_INITIAL_CREDIT_MICRO:-200000}"
+  echo "AI99T_EXPECTED_EGRESS_IP=$egress_ip"
   echo "AI99T_SECRET_DATA_DIR=$secret_root/data"
   echo "AI99T_SECRET_RUN_DIR=$secret_root/run"
   echo "AI99T_SECRET_MASTER_KEY_FILE=$secret_root/master_key"

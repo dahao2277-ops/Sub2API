@@ -53,6 +53,47 @@ func TestHTTPCommercialCoreSignsCanonicalRequest(t *testing.T) {
 	require.Equal(t, "req-1", result.AuthoritativeRequestID)
 }
 
+func TestHTTPCommercialCoreAuthProbeIsSignedAndRejectsUnsafeEvidence(t *testing.T) {
+	key := []byte(strings.Repeat("a", 32))
+	unsafe := false
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		require.Equal(t, http.MethodPost, r.Method)
+		require.Equal(t, coreAuthProbePath, r.URL.Path)
+		body, err := io.ReadAll(r.Body)
+		require.NoError(t, err)
+		digest := sha256.Sum256(body)
+		canonical := strings.Join([]string{
+			r.Method,
+			r.URL.RequestURI(),
+			r.Header.Get("X-AI16T-Timestamp"),
+			r.Header.Get("X-AI16T-Nonce"),
+			hex.EncodeToString(digest[:]),
+		}, "\n")
+		mac := hmac.New(sha256.New, key)
+		_, _ = mac.Write([]byte(canonical))
+		require.Equal(t, hex.EncodeToString(mac.Sum(nil)), r.Header.Get("X-AI16T-Signature"))
+		_ = json.NewEncoder(w).Encode(AuthProbeResult{
+			Endpoint:                   "https://api.apiyi.com/v1/models",
+			UpstreamHTTPStatus:         http.StatusOK,
+			KeyFingerprint:             strings.Repeat("f", 64),
+			AuthorizationHeaderPresent: true,
+			BearerPrefixCorrect:        true,
+			AuthorizationHeaderLength:  64,
+			URLContainsSecret:          unsafe,
+		})
+	}))
+	defer server.Close()
+
+	client, err := NewHTTPCommercialCore(server.URL, key, server.Client())
+	require.NoError(t, err)
+	result, err := client.AuthProbe(context.Background())
+	require.NoError(t, err)
+	require.Equal(t, http.StatusOK, result.UpstreamHTTPStatus)
+	unsafe = true
+	_, err = client.AuthProbe(context.Background())
+	require.Error(t, err)
+}
+
 func TestHTTPCommercialCoreStreamsCompleteFramesAndRequiresSettlement(t *testing.T) {
 	key := []byte(strings.Repeat("s", 32))
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

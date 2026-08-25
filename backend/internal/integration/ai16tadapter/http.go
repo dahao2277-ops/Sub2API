@@ -26,6 +26,7 @@ const (
 	coreProjectionPath    = "/internal/v1/projection"
 	coreRefundPath        = "/internal/v1/refund"
 	coreHealthPath        = "/internal/v1/health"
+	coreAuthProbePath     = "/internal/v1/provider-auth-probe"
 	defaultCoreBodyLimit  = 2 << 20
 	defaultCoreFrameLimit = 1 << 20
 	minimumSigningKeySize = 32
@@ -179,6 +180,22 @@ func (c *HTTPCommercialCore) Ready(ctx context.Context) error {
 		return errors.New("core is not ready")
 	}
 	return nil
+}
+
+// AuthProbe invokes the Core-owned, non-billing APIYI /v1/models probe through
+// the same signed service transport used by normal Adapter requests.
+func (c *HTTPCommercialCore) AuthProbe(ctx context.Context) (AuthProbeResult, error) {
+	var result AuthProbeResult
+	if err := c.do(ctx, http.MethodPost, coreAuthProbePath, nil, &result); err != nil {
+		return AuthProbeResult{}, err
+	}
+	if result.Endpoint != "https://api.apiyi.com/v1/models" ||
+		!result.AuthorizationHeaderPresent || !result.BearerPrefixCorrect ||
+		result.AuthorizationHeaderLength < len("Bearer ")+16 || result.URLContainsSecret ||
+		result.RedirectFollowed {
+		return AuthProbeResult{}, errors.New("core auth probe returned unsafe evidence")
+	}
+	return result, nil
 }
 
 func (c *HTTPCommercialCore) Projection(ctx context.Context, userReference string) (Projection, error) {

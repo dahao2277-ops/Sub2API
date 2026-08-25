@@ -30,9 +30,19 @@ for marker in \
   'TP_TEST_MODE: ${AI16T_CORE_TEST_MODE:-mock-only-enabled}' \
   'AI16T_PROVIDER_BASE_URL: https://api.apiyi.com/v1' \
   'AI16T_SECRET_SOCKET: /run/ai16t-secret/provider.sock' \
+  'commercial-core-green:' \
+  'AI16T_CORE_BLUE_IMAGE' \
+  'AI16T_CORE_GREEN_IMAGE' \
+  'AI16T_ACTIVE_CORE_URL' \
+  'entrypoint: ["python", "/bridge/apiyi_auth_probe.py"]' \
   'internal: true'; do
   require_text "$marker" "$compose"
 done
+
+if grep -Eq '\.\./(core_bridge|apiyi_provider|apiyi_transport|secret_provider_client)\.py:/bridge/' "$compose"; then
+  echo "Mutable Commercial Core bridge mount detected" >&2
+  exit 1
+fi
 
 require_text '{$AI99T_DOMAIN}' "$caddy"
 require_text 'reverse_proxy {$AI99T_ACTIVE_UPSTREAM}' "$caddy"

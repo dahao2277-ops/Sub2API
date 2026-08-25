@@ -113,6 +113,28 @@ type Projection struct {
 	Replay                 bool
 }
 
+// AuthProbeResult contains only sanitized upstream authentication evidence.
+// It never contains the provider credential or Authorization header value.
+type AuthProbeResult struct {
+	Endpoint                   string `json:"endpoint"`
+	UpstreamHTTPStatus         int    `json:"upstream_http_status"`
+	ContentType                string `json:"content_type"`
+	XRequestID                 string `json:"x_request_id"`
+	UpstreamErrorCode          string `json:"upstream_error_code"`
+	UpstreamErrorMessage       string `json:"upstream_error_message"`
+	UpstreamErrorBodySanitized struct {
+		Code    string `json:"code"`
+		Message string `json:"message"`
+	} `json:"upstream_error_body_sanitized"`
+	KeyFingerprint             string `json:"key_fingerprint"`
+	AuthorizationHeaderPresent bool   `json:"authorization_header_present"`
+	BearerPrefixCorrect        bool   `json:"bearer_prefix_correct"`
+	AuthorizationHeaderLength  int    `json:"authorization_header_length"`
+	URLContainsSecret          bool   `json:"url_contains_secret"`
+	RedirectFollowed           bool   `json:"redirect_followed"`
+	PeerIP                     string `json:"peer_ip"`
+}
+
 type Result struct {
 	Core                 CoreResult
 	FinanciallyCommitted bool

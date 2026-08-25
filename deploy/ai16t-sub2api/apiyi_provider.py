@@ -3,15 +3,13 @@ from __future__ import annotations
 import base64
 import json
 import time
-import urllib.error
-import urllib.request
 from collections.abc import Generator, Iterator
 from typing import Any
 from urllib.parse import urlsplit
 
-from token_platform.models import ProviderFailure, ProviderResult, StreamChunk, Usage
-
+from apiyi_transport import APIYITransport, SanitizedHTTPError, sanitize_error
 from secret_provider_client import UnixSecretResolver
+from token_platform.models import ProviderFailure, ProviderResult, StreamChunk, Usage
 
 RAW_RESPONSE_PREFIX = "ai16t-raw-v1:"
 MAX_UPSTREAM_RESPONSE = 4 * 1024 * 1024
@@ -28,6 +26,7 @@ class APIYIProvider:
         secret_resolver: UnixSecretResolver,
         secret_reference: str,
         timeout_seconds: float = 20.0,
+        transport: APIYITransport | None = None,
     ):
         parsed = urlsplit(base_url.rstrip("/"))
         if (
@@ -43,6 +42,7 @@ class APIYIProvider:
         self.secret_resolver = secret_resolver
         self.secret_reference = secret_reference
         self.timeout_seconds = timeout_seconds
+        self.transport = transport or APIYITransport(timeout_seconds=timeout_seconds)
 
     def call(
         self,
@@ -55,7 +55,9 @@ class APIYIProvider:
     ) -> ProviderResult:
         del stream
         if failure:
-            raise ProviderFailure("test_hook_disabled", retryable=False, usage_source="confirmed_none")
+            raise ProviderFailure(
+                "test_hook_disabled", retryable=False, usage_source="confirmed_none"
+            )
         endpoint, payload = self._payload(prompt, model, stream=False)
         started = time.monotonic()
         body = self._request(endpoint, payload)
@@ -84,14 +86,15 @@ class APIYIProvider:
     ) -> Iterator[StreamChunk]:
         del supplier_id
         if failure:
-            raise ProviderFailure("test_hook_disabled", retryable=False, usage_source="confirmed_none")
+            raise ProviderFailure(
+                "test_hook_disabled", retryable=False, usage_source="confirmed_none"
+            )
         endpoint, payload = self._payload(prompt, model, stream=True)
-        request = self._build_request(endpoint, payload)
         try:
-            response = urllib.request.urlopen(request, timeout=self.timeout_seconds)
-        except urllib.error.HTTPError as error:
-            raise self._http_failure(error) from error
-        except (TimeoutError, urllib.error.URLError) as error:
+            response = self._open_response(endpoint, payload)
+        except ProviderFailure:
+            raise
+        except (TimeoutError, OSError) as error:
             raise ProviderFailure("provider_timeout", usage_source="missing") from error
 
         cumulative = Usage(0, 0, 0)
@@ -110,12 +113,16 @@ class APIYIProvider:
                 total_bytes += len(line)
                 if len(line) > MAX_SSE_LINE or total_bytes > MAX_UPSTREAM_RESPONSE:
                     raise ProviderFailure(
-                        "provider_response_too_large", retryable=False, usage_source="missing"
+                        "provider_response_too_large",
+                        retryable=False,
+                        usage_source="missing",
                     )
                 frame.extend(line)
                 if len(frame) > MAX_SSE_FRAME:
                     raise ProviderFailure(
-                        "provider_response_too_large", retryable=False, usage_source="missing"
+                        "provider_response_too_large",
+                        retryable=False,
+                        usage_source="missing",
                     )
                 if line not in (b"\n", b"\r\n"):
                     continue
@@ -166,19 +173,28 @@ class APIYIProvider:
         yield StreamChunk(frame.decode("utf-8"), delta, finish_reason)
         return usage_seen, cumulative
 
-    def _payload(self, prompt: str, model: str, *, stream: bool) -> tuple[str, dict[str, Any]]:
+    def _payload(
+        self, prompt: str, model: str, *, stream: bool
+    ) -> tuple[str, dict[str, Any]]:
         try:
             payload = json.loads(prompt)
         except json.JSONDecodeError as error:
             raise ProviderFailure(
-                "provider_payload_invalid", retryable=False, usage_source="confirmed_none"
+                "provider_payload_invalid",
+                retryable=False,
+                usage_source="confirmed_none",
             ) from error
         if not isinstance(payload, dict):
             raise ProviderFailure(
-                "provider_payload_invalid", retryable=False, usage_source="confirmed_none"
+                "provider_payload_invalid",
+                retryable=False,
+                usage_source="confirmed_none",
             )
         endpoint = payload.pop("_ai16t_endpoint", "chat.completions")
-        if endpoint not in ("chat.completions", "responses") or payload.get("model") != model:
+        if (
+            endpoint not in ("chat.completions", "responses")
+            or payload.get("model") != model
+        ):
             raise ProviderFailure(
                 "provider_model_binding_invalid",
                 retryable=False,
@@ -191,20 +207,21 @@ class APIYIProvider:
                 options = {}
             if not isinstance(options, dict):
                 raise ProviderFailure(
-                    "provider_payload_invalid", retryable=False, usage_source="confirmed_none"
+                    "provider_payload_invalid",
+                    retryable=False,
+                    usage_source="confirmed_none",
                 )
             options["include_usage"] = True
             payload["stream_options"] = options
         return str(endpoint), payload
 
     def _request(self, endpoint: str, payload: dict[str, Any]) -> bytes:
-        request = self._build_request(endpoint, payload)
         try:
-            with urllib.request.urlopen(request, timeout=self.timeout_seconds) as response:
+            with self._open_response(endpoint, payload) as response:
                 body = response.read(MAX_UPSTREAM_RESPONSE + 1)
-        except urllib.error.HTTPError as error:
-            raise self._http_failure(error) from error
-        except (TimeoutError, urllib.error.URLError) as error:
+        except ProviderFailure:
+            raise
+        except (TimeoutError, OSError) as error:
             raise ProviderFailure("provider_timeout", usage_source="missing") from error
         if len(body) > MAX_UPSTREAM_RESPONSE:
             raise ProviderFailure(
@@ -212,32 +229,103 @@ class APIYIProvider:
             )
         return body
 
-    def _build_request(self, endpoint: str, payload: dict[str, Any]) -> urllib.request.Request:
+    def _open_response(self, endpoint: str, payload: dict[str, Any]) -> Any:
         material = self.secret_resolver.resolve(self.secret_reference)
         body = json.dumps(payload, separators=(",", ":"), ensure_ascii=False).encode()
-        path = "/chat/completions" if endpoint == "chat.completions" else "/responses"
-        return urllib.request.Request(
-            self.base_url + path,
-            data=body,
-            method="POST",
-            headers={
-                "Authorization": "Bearer " + material.reveal(),
-                "Content-Type": "application/json",
-                "Accept": "text/event-stream" if payload.get("stream") else "application/json",
-                "User-Agent": "AI16T-Platform-B-Canary/1",
-            },
+        path = (
+            "/v1/chat/completions"
+            if endpoint == "chat.completions"
+            else "/v1/responses"
         )
+        secret = material.reveal()
+        try:
+            response = self.transport.open(
+                "POST",
+                path,
+                secret,
+                body=body,
+                accept="text/event-stream"
+                if payload.get("stream")
+                else "application/json",
+            )
+            if 200 <= response.status < 300:
+                return response
+            evidence = sanitize_error(response, secret)
+            response.close()
+            raise self._http_failure(evidence)
+        finally:
+            # Best-effort local reference release.
+            secret = ""  # nosec B105
+
+    def probe_models(self) -> dict[str, Any]:
+        material = self.secret_resolver.resolve(self.secret_reference)
+        secret = material.reveal()
+        response = None
+        try:
+            response = self.transport.open("GET", "/v1/models", secret)
+            if 200 <= response.status < 300:
+                response.read(64 * 1024 + 1)
+                content_type = (
+                    str(response.headers.get("Content-Type", ""))
+                    .split(";", 1)[0]
+                    .strip()
+                )
+                request_id = ""
+                for name in ("x-request-id", "x-api-request-id", "request-id"):
+                    value = response.headers.get(name)
+                    if value:
+                        request_id = str(value)[:256]
+                        break
+                evidence = SanitizedHTTPError(
+                    response.status, content_type, request_id, "", ""
+                )
+            else:
+                evidence = sanitize_error(response, secret)
+            return {
+                "endpoint": "https://api.apiyi.com/v1/models",
+                "upstream_http_status": evidence.status,
+                "content_type": evidence.content_type,
+                "x_request_id": evidence.request_id,
+                "upstream_error_code": evidence.error_code,
+                "upstream_error_message": evidence.error_message,
+                "upstream_error_body_sanitized": {
+                    "code": evidence.error_code,
+                    "message": evidence.error_message,
+                },
+                "key_fingerprint": material.fingerprint,
+                "authorization_header_present": True,
+                "bearer_prefix_correct": True,
+                "authorization_header_length": len(secret) + len("Bearer "),
+                "url_contains_secret": False,
+                "redirect_followed": False,
+                "peer_ip": response.peer_ip,
+            }
+        finally:
+            if response is not None:
+                response.close()
+            # Best-effort local reference release.
+            secret = ""  # nosec B105
 
     @staticmethod
-    def _http_failure(error: urllib.error.HTTPError) -> ProviderFailure:
-        status = int(error.code)
+    def _http_failure(error: SanitizedHTTPError) -> ProviderFailure:
+        status = error.status
         if status in (401, 403):
-            return ProviderFailure("provider_auth_rejected", retryable=False, usage_source="confirmed_none")
+            return ProviderFailure(
+                "provider_auth_rejected", retryable=False, usage_source="confirmed_none"
+            )
         if status == 429:
-            return ProviderFailure("provider_rate_limited", retryable=True, usage_source="confirmed_none")
+            return ProviderFailure(
+                "provider_rate_limited", retryable=True, usage_source="confirmed_none"
+            )
         if 400 <= status < 500:
-            return ProviderFailure("provider_request_rejected", retryable=False, usage_source="confirmed_none")
-        return ProviderFailure("provider_upstream_error", retryable=True, usage_source="missing")
+            return ProviderFailure(
+                "provider_request_rejected",
+                retryable=False,
+                usage_source="confirmed_none",
+            )
+        return ProviderFailure(
+            "provider_upstream_error", retryable=True, usage_source="missing"
+        )
 
     @staticmethod
     def _usage(payload: dict[str, Any], endpoint: str) -> Usage:
@@ -246,7 +334,7 @@ class APIYIProvider:
             response = payload.get("response")
             source = response.get("usage") if isinstance(response, dict) else None
         if not isinstance(source, dict):
-            raise ValueError("usage is missing")
+            raise TypeError("usage is missing")
         if endpoint == "chat.completions":
             input_tokens = int(source["prompt_tokens"])
             output_tokens = int(source["completion_tokens"])
@@ -255,7 +343,9 @@ class APIYIProvider:
             input_tokens = int(source["input_tokens"])
             output_tokens = int(source["output_tokens"])
             details = source.get("input_tokens_details")
-        cached = int(details.get("cached_tokens", 0)) if isinstance(details, dict) else 0
+        cached = (
+            int(details.get("cached_tokens", 0)) if isinstance(details, dict) else 0
+        )
         usage = Usage(input_tokens, output_tokens, cached)
         usage.validate()
         return usage
@@ -309,7 +399,9 @@ class APIYIProvider:
             # settlement would reorder it behind the final usage event.
             return None
         event_type = payload.get("type")
-        return "stop" if event_type in ("response.completed", "response.failed") else None
+        return (
+            "stop" if event_type in ("response.completed", "response.failed") else None
+        )
 
     @staticmethod
     def _finish_reason(payload: dict[str, Any], endpoint: str) -> str:

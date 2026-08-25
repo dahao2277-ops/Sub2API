@@ -89,9 +89,29 @@ func RegisterAI16THybridRoutes(
 	r.POST("/v1/ai16t/responses", gin.HandlerFunc(apiKeyAuth), handler.executeResponses)
 	r.GET("/v1/ai16t/projection", gin.HandlerFunc(apiKeyAuth), handler.projection)
 	admin := r.Group("/api/v1/admin/ai16t", gin.HandlerFunc(adminAuth))
+	admin.POST("/auth-probe", handler.authProbe)
 	admin.POST("/reconcile", handler.reconcile)
 	admin.POST("/refund", handler.refund)
 	return nil
+}
+
+func (h *ai16tHybridHandler) authProbe(c *gin.Context) {
+	ctx, cancel := context.WithTimeout(c.Request.Context(), 25*time.Second)
+	defer cancel()
+	result, err := h.core.AuthProbe(ctx)
+	if err != nil {
+		c.JSON(http.StatusBadGateway, gin.H{
+			"status":                "failed",
+			"hop_2_sub2api_adapter": false,
+			"error":                 "AI16T_AUTH_PROBE_FAILED",
+		})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{
+		"status":                "ok",
+		"hop_2_sub2api_adapter": true,
+		"evidence":              result,
+	})
 }
 
 func (h *ai16tHybridHandler) ready(c *gin.Context) {

@@ -11,7 +11,7 @@ import threading
 import time
 import urllib.error
 import urllib.request
-from collections.abc import Iterator
+from collections.abc import Generator
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
@@ -30,7 +30,9 @@ SIGNATURE_SKEW_SECONDS = 30
 
 def _read_mode_0600(path: str) -> bytes:
     resolved = Path(path)
-    material = FileReferenceResolver({"value": resolved}).resolve("value").reveal().encode()
+    material = (
+        FileReferenceResolver({"value": resolved}).resolve("value").reveal().encode()
+    )
     if len(material) < 32:
         raise RuntimeError("secret material is too short")
     return material
@@ -72,7 +74,10 @@ class HTTPMockProvider:
             },
         )
         try:
-            with urllib.request.urlopen(request, timeout=self.timeout_seconds) as response:
+            # The mock-only URL is controlled by the isolated test deployment.
+            with urllib.request.urlopen(  # nosec B310
+                request, timeout=self.timeout_seconds
+            ) as response:
                 result = json.loads(response.read(MAX_BODY))
         except urllib.error.HTTPError as error:
             try:
@@ -133,7 +138,8 @@ class HybridAuthority:
         self.platform.initialize()
         self.provider_mode = os.getenv("AI16T_PROVIDER_MODE", "mock")
         self.secret_resolver: UnixSecretResolver | None = None
-        self.secret_reference = ""
+        # This is a SecretProvider reference identifier, not a password literal.
+        self.secret_reference = ""  # nosec B105
         self.allowed_users = frozenset(
             value.strip()
             for value in os.getenv("AI16T_CANARY_USER_REFERENCES", "").split(",")
@@ -142,10 +148,14 @@ class HybridAuthority:
         self.allowed_models: frozenset[str]
         if self.provider_mode == "mock":
             resolver = FileReferenceResolver(
-                {"mock-provider-api-key": Path(os.environ["AI16T_MOCK_PROVIDER_KEY_FILE"])}
+                {
+                    "mock-provider-api-key": Path(
+                        os.environ["AI16T_MOCK_PROVIDER_KEY_FILE"]
+                    )
+                }
             )
             provider_key = resolver.resolve("mock-provider-api-key").reveal()
-            external_provider = HTTPMockProvider(
+            external_provider: Any = HTTPMockProvider(
                 os.environ["AI16T_MOCK_PROVIDER_URL"], provider_key
             )
             self.allowed_models = frozenset({"gpt-4o-mini"})
@@ -170,26 +180,31 @@ class HybridAuthority:
             raise RuntimeError("unsupported AI16T provider mode")
         self.platform.provider = external_provider
         self.platform.gateway.provider = external_provider
+        self.external_provider = external_provider
         self.signing_key = _read_mode_0600(os.environ["AI16T_CORE_SIGNING_KEY_FILE"])
         self.identity_lock = threading.Lock()
         self._initialize_bridge_schema()
 
     def _configure_apiyi_catalog(self, path: str) -> frozenset[str]:
-        raw = FileReferenceResolver({"apiyi-model-config": Path(path)}).resolve(
-            "apiyi-model-config"
-        ).reveal()
+        raw = (
+            FileReferenceResolver({"apiyi-model-config": Path(path)})
+            .resolve("apiyi-model-config")
+            .reveal()
+        )
         try:
             config = json.loads(raw)
         except json.JSONDecodeError as error:
             raise RuntimeError("APIYI model configuration is invalid") from error
         models = config.get("models") if isinstance(config, dict) else None
         if not isinstance(models, list) or not 1 <= len(models) <= 6:
-            raise RuntimeError("APIYI model configuration must contain one to six models")
+            raise RuntimeError(
+                "APIYI model configuration must contain one to six models"
+            )
         allowed: set[str] = set()
         configured: list[dict[str, Any]] = []
         for item in models:
             if not isinstance(item, dict):
-                raise RuntimeError("APIYI model configuration is invalid")
+                raise TypeError("APIYI model configuration is invalid")
             model = str(item.get("model", ""))
             upstream_model = str(item.get("upstream_model", ""))
             values = (
@@ -216,13 +231,20 @@ class HybridAuthority:
         with self.platform.database.transaction() as connection:
             placeholders = ",".join("?" for _ in allowed)
             connection.execute(
-                f"UPDATE routes SET enabled=0 WHERE provider='apiyi' "
+                f"UPDATE routes SET enabled=0 WHERE provider='apiyi' "  # nosec B608
                 f"AND model NOT IN ({placeholders})",
                 tuple(sorted(allowed)),
             )
         for item in configured:
             model = str(item["model"])
-            supplier_input, supplier_output, supplier_cached, customer_input, customer_output, customer_cached = item["rates"]
+            (
+                supplier_input,
+                supplier_output,
+                supplier_cached,
+                customer_input,
+                customer_output,
+                customer_cached,
+            ) = item["rates"]
             self._ensure_price_version(
                 "apiyi", model, customer_input, customer_output, customer_cached
             )
@@ -256,7 +278,12 @@ class HybridAuthority:
         return frozenset(allowed)
 
     def _ensure_price_version(
-        self, provider: str, model: str, input_rate: int, output_rate: int, cached_rate: int
+        self,
+        provider: str,
+        model: str,
+        input_rate: int,
+        output_rate: int,
+        cached_rate: int,
     ) -> None:
         with self.platform.database.read() as connection:
             current = connection.execute(
@@ -271,7 +298,9 @@ class HybridAuthority:
             cached_rate,
         ):
             return
-        self.platform.create_price_version(provider, model, input_rate, output_rate, cached_rate)
+        self.platform.create_price_version(
+            provider, model, input_rate, output_rate, cached_rate
+        )
 
     def _ensure_supplier_cost_version(
         self,
@@ -359,13 +388,15 @@ class HybridAuthority:
         if abs(now - timestamp_value) > SIGNATURE_SKEW_SECONDS or len(nonce) != 48:
             return False
         digest = hashlib.sha256(body).hexdigest()
-        canonical = "\n".join((method, path, timestamp, nonce, digest)).encode()
+        canonical = f"{method}\n{path}\n{timestamp}\n{nonce}\n{digest}".encode()
         expected = hmac.new(self.signing_key, canonical, hashlib.sha256).hexdigest()
         if not hmac.compare_digest(expected, signature):
             return False
         try:
             with self.platform.database.transaction() as connection:
-                connection.execute("DELETE FROM bridge_nonces WHERE expires_at < ?", (now,))
+                connection.execute(
+                    "DELETE FROM bridge_nonces WHERE expires_at < ?", (now,)
+                )
                 connection.execute(
                     "INSERT INTO bridge_nonces(nonce,expires_at) VALUES (?,?)",
                     (nonce, now + SIGNATURE_SKEW_SECONDS * 2),
@@ -432,7 +463,8 @@ class HybridAuthority:
     def _request_replay(self, request_id: str) -> bool:
         with self.platform.database.transaction() as connection:
             cursor = connection.execute(
-                "INSERT OR IGNORE INTO bridge_requests(request_id) VALUES (?)", (request_id,)
+                "INSERT OR IGNORE INTO bridge_requests(request_id) VALUES (?)",
+                (request_id,),
             )
             return cursor.rowcount == 0
 
@@ -441,7 +473,7 @@ class HybridAuthority:
         raw = base64.b64decode(payload_b64, validate=True)
         payload = json.loads(raw)
         if not isinstance(payload, dict):
-            raise ValueError("request payload must be an object")
+            raise TypeError("request payload must be an object")
         endpoint = payload.get("_ai16t_endpoint", "chat.completions")
         if endpoint == "chat.completions":
             messages = payload.get("messages")
@@ -519,14 +551,17 @@ class HybridAuthority:
         failure_plan = payload.get("FailurePlan") or None
         if self.provider_mode == "apiyi" and failure_plan:
             raise PermissionError("test hooks are disabled for APIYI")
-        authoritative_request_id = "sub2_" + hashlib.sha256(
-            f"{user_id}\0{idempotency_key}".encode()
-        ).hexdigest()[:40]
+        authoritative_request_id = (
+            "sub2_"
+            + hashlib.sha256(f"{user_id}\0{idempotency_key}".encode()).hexdigest()[:40]
+        )
         replay = self._request_replay(authoritative_request_id)
         prompt = json.dumps(request_payload, separators=(",", ":"), ensure_ascii=False)
         max_output = request_payload.get(
             "max_output_tokens",
-            request_payload.get("max_completion_tokens", request_payload.get("max_tokens", 256)),
+            request_payload.get(
+                "max_completion_tokens", request_payload.get("max_tokens", 256)
+            ),
         )
         if not isinstance(max_output, int) or not 1 <= max_output <= 4096:
             raise ValueError("max output tokens are invalid")
@@ -543,13 +578,17 @@ class HybridAuthority:
             max_output,
         )
 
-    def execute_stream(self, payload: dict[str, Any]) -> Iterator[tuple[str, Any]]:
+    def execute_stream(
+        self, payload: dict[str, Any]
+    ) -> Generator[tuple[str, Any], None, None]:
         prepared = self._prepare_execution(payload)
         if not prepared[4].get("stream", False):
             raise ValueError("stream endpoint requires stream=true")
         return self._execute_stream(prepared)
 
-    def _execute_stream(self, prepared: tuple[Any, ...]) -> Iterator[tuple[str, Any]]:
+    def _execute_stream(
+        self, prepared: tuple[Any, ...]
+    ) -> Generator[tuple[str, Any], None, None]:
         (
             user_id,
             api_key_id,
@@ -605,7 +644,7 @@ class HybridAuthority:
             ).fetchone()
         refund = int(refund_row["value"]) if refund_row else 0
         revenue = int(settlement.revenue_micro)
-        response = b""
+        response: bytes | None = b""
         if include_response:
             response = response_override or decode_raw_response(settlement.content)
         if include_response and response is None:
@@ -617,7 +656,10 @@ class HybridAuthority:
                     "choices": [
                         {
                             "index": 0,
-                            "message": {"role": "assistant", "content": settlement.content},
+                            "message": {
+                                "role": "assistant",
+                                "content": settlement.content,
+                            },
                             "finish_reason": "stop",
                         }
                     ],
@@ -629,6 +671,8 @@ class HybridAuthority:
                 },
                 separators=(",", ":"),
             ).encode()
+        if response is None:
+            raise RuntimeError("settled response serialization failed")
         settled = settlement.status in ("COMPLETED", "PARTIAL_SETTLED")
         return {
             "AuthoritativeRequestID": settlement.request_id,
@@ -651,6 +695,26 @@ class HybridAuthority:
             self.secret_resolver.ready()
             self.secret_resolver.resolve(self.secret_reference)
 
+    def provider_auth_probe(self) -> dict[str, Any]:
+        if self.provider_mode != "apiyi" or not isinstance(
+            self.external_provider, APIYIProvider
+        ):
+            raise PermissionError("provider auth probe requires APIYI mode")
+        return self.external_provider.probe_models()
+
+    def version(self) -> dict[str, Any]:
+        with self.platform.database.read() as connection:
+            row = connection.execute(
+                "SELECT MAX(version) version FROM schema_version"
+            ).fetchone()
+        return {
+            "status": "ok",
+            "slot": os.environ.get("AI16T_CORE_SLOT", "unknown"),
+            "core_commit": os.environ.get("AI16T_CORE_RELEASE_COMMIT", "unknown"),
+            "bridge_commit": os.environ.get("AI16T_BRIDGE_RELEASE_COMMIT", "unknown"),
+            "schema_version": int(row["version"] or 0) if row else 0,
+        }
+
     def projection(self, external_user: str) -> dict[str, Any]:
         with self.platform.database.read() as connection:
             mapping = connection.execute(
@@ -662,7 +726,8 @@ class HybridAuthority:
                 raise ValueError("identity not found")
             user_id = int(mapping["core_user_id"])
             request = connection.execute(
-                "SELECT * FROM requests WHERE user_id=? ORDER BY id DESC LIMIT 1", (user_id,)
+                "SELECT * FROM requests WHERE user_id=? ORDER BY id DESC LIMIT 1",
+                (user_id,),
             ).fetchone()
             if not request:
                 raise ValueError("request not found")
@@ -696,8 +761,7 @@ class HybridAuthority:
             "ProviderCostMicro": int(request["supplier_total_cost"]),
             "BalanceAfterMicro": int(balance["available_micro"]),
             "RefundMicro": refunded_micro,
-            "NetRevenueMicro": int(request["customer_total_charge"])
-            - refunded_micro,
+            "NetRevenueMicro": int(request["customer_total_charge"]) - refunded_micro,
             "Replay": True,
         }
 
@@ -753,7 +817,7 @@ class Handler(BaseHTTPRequestHandler):
         self.wfile.write(b"\r\n")
         self.wfile.flush()
 
-    def _stream(self, iterator: Iterator[tuple[str, Any]]) -> None:
+    def _stream(self, iterator: Generator[tuple[str, Any], None, None]) -> None:
         self.send_response(200)
         self.send_header("Content-Type", "text/event-stream")
         self.send_header("Cache-Control", "no-cache, no-store, no-transform")
@@ -770,13 +834,13 @@ class Handler(BaseHTTPRequestHandler):
                     )
                 else:
                     data = json.dumps(value, separators=(",", ":"))
-                encoded = f"event: {event}\ndata: {data}\n\n".encode("utf-8")
+                encoded = f"event: {event}\ndata: {data}\n\n".encode()
                 self._write_stream_chunk(encoded)
             self.wfile.write(b"0\r\n\r\n")
             self.wfile.flush()
         except (BrokenPipeError, ConnectionResetError):
             iterator.close()
-        except Exception:
+        except Exception:  # noqa: BLE001 - headers are already committed; close fail-closed.
             # Headers may already be committed.  Closing is safer than writing a
             # second JSON response into an SSE body; the Ledger recovery state is
             # finalized by the Commercial Core iterator.
@@ -790,6 +854,13 @@ class Handler(BaseHTTPRequestHandler):
             if self.command == "GET" and self.path == "/health":
                 self._write(200, {"status": "ok"})
                 return
+            if self.command == "GET" and self.path == "/ready":
+                AUTHORITY.ready()
+                self._write(200, {"status": "ok", "authority": "LEDGER_WINS"})
+                return
+            if self.command == "GET" and self.path == "/version":
+                self._write(200, AUTHORITY.version())
+                return
             if not AUTHORITY.authorize(self.command, self.path, body, self.headers):
                 self._write(401, {"error": "invalid service signature"})
                 return
@@ -797,6 +868,12 @@ class Handler(BaseHTTPRequestHandler):
             if self.command == "GET" and parsed.path == "/internal/v1/health":
                 AUTHORITY.ready()
                 self._write(200, {"status": "ok", "authority": "LEDGER_WINS"})
+                return
+            if (
+                self.command == "POST"
+                and parsed.path == "/internal/v1/provider-auth-probe"
+            ):
+                self._write(200, AUTHORITY.provider_auth_probe())
                 return
             if self.command == "GET" and parsed.path == "/internal/v1/projection":
                 user = parse_qs(parsed.query).get("user_reference", [""])[0]
@@ -817,7 +894,7 @@ class Handler(BaseHTTPRequestHandler):
             self._write(400, {"error": type(error).__name__})
         except PermissionError as error:
             self._write(403, {"error": type(error).__name__})
-        except BaseException as error:
+        except Exception as error:  # noqa: BLE001 - return only the sanitized exception type.
             self._write(503, {"error": type(error).__name__})
 
     do_GET = _dispatch
@@ -825,7 +902,8 @@ class Handler(BaseHTTPRequestHandler):
 
 
 def main() -> None:
-    server = ThreadingHTTPServer(("0.0.0.0", 8787), Handler)
+    # The container port is reachable only on the isolated Compose network.
+    server = ThreadingHTTPServer(("0.0.0.0", 8787), Handler)  # nosec B104
     server.serve_forever()
 
 
