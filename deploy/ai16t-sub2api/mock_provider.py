@@ -65,7 +65,14 @@ class Handler(BaseHTTPRequestHandler):
         failure = payload.get("failure")
         started = time.monotonic()
         if failure in ("slow", "slow_lease"):
-            time.sleep(0.15 if failure == "slow" else 0.35)
+            default_delay = "0.15" if failure == "slow" else "0.35"
+            delay = float(
+                os.getenv("AI16T_MOCK_SLOW_LEASE_DELAY_SECONDS", default_delay)
+            )
+            if not 0.05 <= delay <= 15:
+                self.write_json(400, {"error": "invalid mock delay"})
+                return
+            time.sleep(delay)
         if failure == "timeout":
             time.sleep(2.0)
         if failure in {

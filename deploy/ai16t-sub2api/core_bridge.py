@@ -156,7 +156,9 @@ class HybridAuthority:
             )
             provider_key = resolver.resolve("mock-provider-api-key").reveal()
             external_provider: Any = HTTPMockProvider(
-                os.environ["AI16T_MOCK_PROVIDER_URL"], provider_key
+                os.environ["AI16T_MOCK_PROVIDER_URL"],
+                provider_key,
+                float(os.getenv("AI16T_MOCK_PROVIDER_TIMEOUT_SECONDS", "0.75")),
             )
             self.allowed_models = frozenset({"gpt-4o-mini"})
             self.ledger_provider = "openai"
@@ -702,6 +704,12 @@ class HybridAuthority:
             raise PermissionError("provider auth probe requires APIYI mode")
         return self.external_provider.probe_models()
 
+    def recover_incomplete(self) -> dict[str, Any]:
+        if self.provider_mode != "mock" or not self.settings.test_mode:
+            raise PermissionError("recovery endpoint is restricted to isolated Mock mode")
+        recovered = self.platform.recover_incomplete_requests()
+        return {"status": "ok", "recovered_request_ids": recovered}
+
     def version(self) -> dict[str, Any]:
         with self.platform.database.read() as connection:
             row = connection.execute(
@@ -875,6 +883,12 @@ class Handler(BaseHTTPRequestHandler):
             ):
                 self._write(200, AUTHORITY.provider_auth_probe())
                 return
+            if (
+                self.command == "POST"
+                and parsed.path == "/internal/v1/recover-incomplete"
+            ):
+                self._write(200, AUTHORITY.recover_incomplete())
+                return
             if self.command == "GET" and parsed.path == "/internal/v1/projection":
                 user = parse_qs(parsed.query).get("user_reference", [""])[0]
                 self._write(200, AUTHORITY.projection(user))
@@ -903,7 +917,8 @@ class Handler(BaseHTTPRequestHandler):
 
 def main() -> None:
     # The container port is reachable only on the isolated Compose network.
-    server = ThreadingHTTPServer(("0.0.0.0", 8787), Handler)  # nosec B104
+    port = int(os.getenv("TP_BIND_PORT", "8787"))
+    server = ThreadingHTTPServer(("0.0.0.0", port), Handler)  # nosec B104
     server.serve_forever()
 
 

@@ -45,6 +45,33 @@ Commercial Core Blue and Green are different release artifacts:
   revision label does not equal `AI16T_BRIDGE_RELEASE_COMMIT` exposed by
   `/version`. Keep both image IDs and revisions in the deployment evidence.
 
+The authoritative rollback gate is a separate Mock-only Compose project. It
+does not join the public sandbox network, mount the production Ledger, or carry
+an APIYI credential. Build its three `linux/amd64` images only from a clean
+commit:
+
+```sh
+./build_core_blue_green_gate_images.sh
+```
+
+Create a mode-0600 gate runtime directory with fresh test-only signing keys and
+an environment file that names the three immutable image IDs printed by the
+build. Then run:
+
+```sh
+python3 core_blue_green_runtime_gate.py \
+  --compose-file compose.core-blue-green-gate.yml \
+  --env-file /absolute/path/to/gate.env \
+  --project "ai99t-core-bg-gate-$(date +%Y%m%d%H%M%S)" \
+  --output /absolute/path/to/core-blue-green-evidence.json
+```
+
+Blue listens on port 8787 and Green on 8788 inside the gate-only network. Both
+share only the disposable authoritative Ledger volume. The runner must end
+with `CORE_BLUE_GREEN_SWITCH=PASS`, `CORE_GREEN_BLUE_ROLLBACK=PASS`,
+`CROSS_INSTANCE_IDEMPOTENCY=PASS`, `ACTIVE_RESERVATIONS=0`, and
+`DUPLICATE_LEDGER_TX=0`. Any missing result is a release block.
+
 Before changing `AI16T_ACTIVE_CORE_URL`, exercise the inactive Green slot with
 Mock Provider only. The mandatory gate uses the shared Ledger volume and must
 show all of the following: a request is `PROCESSING` with `reserved_micro > 0`;

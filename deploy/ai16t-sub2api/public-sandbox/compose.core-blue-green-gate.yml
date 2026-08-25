@@ -1,0 +1,140 @@
+x-core-slot: &core-slot
+  restart: "no"
+  init: true
+  read_only: true
+  user: "65532:65532"
+  cap_drop:
+    - ALL
+  security_opt:
+    - no-new-privileges:true
+  tmpfs:
+    - /tmp:rw,noexec,nosuid,nodev,mode=1777
+  environment: &core-environment
+    PYTHONPATH: /app:/opt/cpython/lib/python3.12/site-packages
+    TP_BIND_HOST: 0.0.0.0
+    TP_CONTAINER_ISOLATION_ACK: "1"
+    TP_DATABASE_PATH: /data/core-blue-green-gate.sqlite3
+    TP_RUNTIME_MODE: isolated-test
+    TP_TEST_MODE: mock-only-enabled
+    TP_PROCESSING_WAIT_SECONDS: "4"
+    TP_RECOVERY_STALE_SECONDS: "1"
+    TP_PROCESSING_LEASE_SECONDS: "0.5"
+    TP_RECOVERY_POLL_SECONDS: "1"
+    TP_MIN_PROFIT_MARGIN_PPM: "100000"
+    AI16T_CORE_SIGNING_KEY_FILE: /run/ai16t-gate/core_signing_key
+    AI16T_MOCK_PROVIDER_KEY_FILE: /run/ai16t-gate/mock_provider_key
+    AI16T_MOCK_PROVIDER_URL: http://mock-provider:9090
+    AI16T_MOCK_PROVIDER_TIMEOUT_SECONDS: "10"
+    AI16T_PROVIDER_MODE: mock
+    AI16T_INITIAL_CREDIT_MICRO: "100000000"
+  depends_on:
+    mock-provider:
+      condition: service_healthy
+  volumes:
+    - core_gate_data:/data
+    - ${CORE_GATE_RUNTIME_DIR:?CORE_GATE_RUNTIME_DIR is required}/core_signing_key:/run/ai16t-gate/core_signing_key:ro
+    - ${CORE_GATE_RUNTIME_DIR:?CORE_GATE_RUNTIME_DIR is required}/mock_provider_key:/run/ai16t-gate/mock_provider_key:ro
+  networks:
+    - core_gate_private
+  healthcheck:
+    test:
+      - CMD
+      - python
+      - -c
+      - "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8787/ready', timeout=2).read()"
+    interval: 2s
+    timeout: 2s
+    retries: 30
+    start_period: 3s
+
+services:
+  mock-provider:
+    image: ${CORE_GATE_MOCK_IMAGE:?CORE_GATE_MOCK_IMAGE is required}
+    restart: "no"
+    init: true
+    entrypoint: ["python", "/mock/mock_provider.py"]
+    read_only: true
+    user: "65532:65532"
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    environment:
+      AI16T_MOCK_PROVIDER_KEY_FILE: /run/ai16t-gate/mock_provider_key
+      AI16T_MOCK_SLOW_LEASE_DELAY_SECONDS: "8"
+    volumes:
+      - ${CORE_GATE_RUNTIME_DIR:?CORE_GATE_RUNTIME_DIR is required}/mock_provider_key:/run/ai16t-gate/mock_provider_key:ro
+    networks:
+      - core_gate_private
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request; urllib.request.urlopen('http://127.0.0.1:9090/health', timeout=2).read()"
+      interval: 2s
+      timeout: 2s
+      retries: 30
+      start_period: 2s
+
+  commercial-core-blue:
+    <<: *core-slot
+    image: ${CORE_GATE_BLUE_IMAGE:?CORE_GATE_BLUE_IMAGE is required}
+    entrypoint: ["python", "/bridge/core_blue_entrypoint.py"]
+    expose:
+      - "8787"
+    environment:
+      <<: *core-environment
+      TP_BIND_PORT: "8787"
+      AI16T_CORE_SLOT: blue
+      AI16T_CORE_RELEASE_COMMIT: ${CORE_GATE_STABLE_CORE_COMMIT:?CORE_GATE_STABLE_CORE_COMMIT is required}
+      AI16T_BRIDGE_RELEASE_COMMIT: ${CORE_GATE_STABLE_BRIDGE_COMMIT:?CORE_GATE_STABLE_BRIDGE_COMMIT is required}
+
+  commercial-core-green:
+    <<: *core-slot
+    image: ${CORE_GATE_GREEN_IMAGE:?CORE_GATE_GREEN_IMAGE is required}
+    entrypoint: ["python", "/bridge/core_bridge.py"]
+    expose:
+      - "8788"
+    environment:
+      <<: *core-environment
+      TP_BIND_PORT: "8788"
+      AI16T_CORE_SLOT: green
+      AI16T_CORE_RELEASE_COMMIT: ${CORE_GATE_CANDIDATE_CORE_COMMIT:?CORE_GATE_CANDIDATE_CORE_COMMIT is required}
+      AI16T_BRIDGE_RELEASE_COMMIT: ${CORE_GATE_CANDIDATE_BRIDGE_COMMIT:?CORE_GATE_CANDIDATE_BRIDGE_COMMIT is required}
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8788/ready', timeout=2).read()"
+      interval: 2s
+      timeout: 2s
+      retries: 30
+      start_period: 3s
+
+  gate-client:
+    image: ${CORE_GATE_MOCK_IMAGE:?CORE_GATE_MOCK_IMAGE is required}
+    restart: "no"
+    init: true
+    entrypoint:
+      - python
+      - -c
+      - "import time; time.sleep(86400)"
+    read_only: true
+    user: "65532:65532"
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    volumes:
+      - ${CORE_GATE_RUNTIME_DIR:?CORE_GATE_RUNTIME_DIR is required}/core_signing_key:/run/ai16t-gate/core_signing_key:ro
+    networks:
+      - core_gate_private
+
+volumes:
+  core_gate_data:
+
+networks:
+  core_gate_private:
+    internal: true
