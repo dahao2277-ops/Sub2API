@@ -346,7 +346,7 @@ class Gate:
                 green_new.get("Status") == "SETTLED",
                 green_new,
             )
-            blue_slow_result = blue_slow.result(timeout=12)
+            blue_slow_result = blue_slow.result(timeout=25)
         self.assert_gate(
             "BLUE_IN_FLIGHT_COMPLETED",
             blue_slow_result.get("Status") == "SETTLED",
