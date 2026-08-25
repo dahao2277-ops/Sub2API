@@ -7,7 +7,7 @@ import re
 import socket
 import ssl
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass, is_dataclass
 from typing import Any, Self
 from urllib.parse import urlsplit
 
@@ -22,6 +22,9 @@ SECRET_PATTERN = re.compile(
 )
 SENSITIVE_FIELDS = frozenset(
     ("authorization", "api_key", "apikey", "access_token", "key", "secret", "token")
+)
+ALLOWED_SANITIZED_MEDIA_TYPES = frozenset(
+    ("application/json", "application/problem+json", "text/plain", "text/event-stream")
 )
 
 
@@ -220,8 +223,8 @@ def sanitize_error(response: SecureResponse, secret: str) -> SanitizedHTTPError:
     payload = response.read(MAX_ERROR_BYTES + 1)
     if len(payload) > MAX_ERROR_BYTES:
         payload = b""
-    content_type = (
-        str(response.headers.get("Content-Type", "")).split(";", 1)[0].strip()
+    content_type = _sanitize_content_type(
+        str(response.headers.get("Content-Type", "")), secret
     )
     request_id = ""
     for name in ("x-request-id", "x-api-request-id", "request-id"):
@@ -244,13 +247,55 @@ def sanitize_error(response: SecureResponse, secret: str) -> SanitizedHTTPError:
         message = _sanitize_text(str(source.get("message", "")), secret)[:1024]
     elif isinstance(sanitized, str):
         message = sanitized[:1024]
-    return SanitizedHTTPError(
+    evidence = SanitizedHTTPError(
         status=response.status,
         content_type=content_type,
         request_id=request_id,
         error_code=code,
         error_message=message,
     )
+    assert_secret_absent(evidence, secret)
+    return evidence
+
+
+def sanitize_response_metadata(
+    response: SecureResponse, secret: str
+) -> SanitizedHTTPError:
+    """Return allowlisted response metadata without trusting upstream headers."""
+
+    request_id = ""
+    for name in ("x-request-id", "x-api-request-id", "request-id"):
+        value = response.headers.get(name)
+        if value:
+            request_id = _sanitize_text(str(value), secret)[:256]
+            break
+    evidence = SanitizedHTTPError(
+        status=response.status,
+        content_type=_sanitize_content_type(
+            str(response.headers.get("Content-Type", "")), secret
+        ),
+        request_id=request_id,
+        error_code="",
+        error_message="",
+    )
+    assert_secret_absent(evidence, secret)
+    return evidence
+
+
+def assert_secret_absent(value: Any, secret: str) -> None:
+    """Fail closed if sanitized evidence still contains exact credential material."""
+
+    normalized = asdict(value) if is_dataclass(value) else value
+    encoded = json.dumps(normalized, sort_keys=True)
+    if secret and (secret in encoded or ("Bearer " + secret) in encoded):
+        raise TransportPolicyError("sanitized evidence still contains secret")
+
+
+def _sanitize_content_type(value: str, secret: str) -> str:
+    media_type = _sanitize_text(value, secret).split(";", 1)[0].strip().lower()
+    if media_type not in ALLOWED_SANITIZED_MEDIA_TYPES:
+        return ""
+    return media_type
 
 
 def _sanitize_value(value: Any, secret: str) -> Any:

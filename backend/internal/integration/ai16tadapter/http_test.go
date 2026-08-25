@@ -56,6 +56,9 @@ func TestHTTPCommercialCoreSignsCanonicalRequest(t *testing.T) {
 func TestHTTPCommercialCoreAuthProbeIsSignedAndRejectsUnsafeEvidence(t *testing.T) {
 	key := []byte(strings.Repeat("a", 32))
 	unsafe := false
+	upstreamStatus := http.StatusOK
+	contentType := "application/json"
+	fingerprint := strings.Repeat("f", 64)
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		require.Equal(t, http.MethodPost, r.Method)
 		require.Equal(t, coreAuthProbePath, r.URL.Path)
@@ -74,8 +77,9 @@ func TestHTTPCommercialCoreAuthProbeIsSignedAndRejectsUnsafeEvidence(t *testing.
 		require.Equal(t, hex.EncodeToString(mac.Sum(nil)), r.Header.Get("X-AI16T-Signature"))
 		_ = json.NewEncoder(w).Encode(AuthProbeResult{
 			Endpoint:                   "https://api.apiyi.com/v1/models",
-			UpstreamHTTPStatus:         http.StatusOK,
-			KeyFingerprint:             strings.Repeat("f", 64),
+			UpstreamHTTPStatus:         upstreamStatus,
+			ContentType:                contentType,
+			KeyFingerprint:             fingerprint,
 			AuthorizationHeaderPresent: true,
 			BearerPrefixCorrect:        true,
 			AuthorizationHeaderLength:  64,
@@ -90,6 +94,24 @@ func TestHTTPCommercialCoreAuthProbeIsSignedAndRejectsUnsafeEvidence(t *testing.
 	require.NoError(t, err)
 	require.Equal(t, http.StatusOK, result.UpstreamHTTPStatus)
 	unsafe = true
+	_, err = client.AuthProbe(context.Background())
+	require.Error(t, err)
+	unsafe = false
+
+	for _, status := range []int{http.StatusUnauthorized, http.StatusForbidden, http.StatusTooManyRequests, http.StatusFound} {
+		upstreamStatus = status
+		_, err = client.AuthProbe(context.Background())
+		require.Error(t, err)
+	}
+	upstreamStatus = http.StatusOK
+	contentType = "text/html"
+	_, err = client.AuthProbe(context.Background())
+	require.Error(t, err)
+	contentType = "application/json"
+	fingerprint = "short"
+	_, err = client.AuthProbe(context.Background())
+	require.Error(t, err)
+	fingerprint = strings.Repeat("z", 64)
 	_, err = client.AuthProbe(context.Background())
 	require.Error(t, err)
 }

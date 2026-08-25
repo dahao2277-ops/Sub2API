@@ -284,6 +284,26 @@ class APIYIProviderTests(unittest.TestCase):
         )
         self.assertNotIn("deepseek-chat", repr(result))
 
+    def test_auth_probe_sanitizes_secret_reflected_in_success_headers(self) -> None:
+        secret = "unit-test-material"
+        response = _Response(
+            b'{"data":[]}',
+            status=200,
+            headers={
+                "Content-Type": "application/" + secret,
+                "x-request-id": "Bearer " + secret,
+            },
+        )
+        provider = APIYIProvider(
+            "https://api.apiyi.com/v1",
+            _Resolver(),
+            "apiyi/integration",
+            transport=_Transport(response),
+        )
+        result = provider.probe_models()
+        self.assertEqual(result["content_type"], "")
+        self.assertNotIn(secret, repr(result))
+
 
 class DockerBuildContextTests(unittest.TestCase):
     def test_nested_runtime_directories_are_excluded_from_build_context(self) -> None:

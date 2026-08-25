@@ -7,7 +7,13 @@ from collections.abc import Generator, Iterator
 from typing import Any
 from urllib.parse import urlsplit
 
-from apiyi_transport import APIYITransport, SanitizedHTTPError, sanitize_error
+from apiyi_transport import (
+    APIYITransport,
+    SanitizedHTTPError,
+    assert_secret_absent,
+    sanitize_error,
+    sanitize_response_metadata,
+)
 from secret_provider_client import UnixSecretResolver
 from token_platform.models import ProviderFailure, ProviderResult, StreamChunk, Usage
 
@@ -265,23 +271,10 @@ class APIYIProvider:
             response = self.transport.open("GET", "/v1/models", secret)
             if 200 <= response.status < 300:
                 response.read(64 * 1024 + 1)
-                content_type = (
-                    str(response.headers.get("Content-Type", ""))
-                    .split(";", 1)[0]
-                    .strip()
-                )
-                request_id = ""
-                for name in ("x-request-id", "x-api-request-id", "request-id"):
-                    value = response.headers.get(name)
-                    if value:
-                        request_id = str(value)[:256]
-                        break
-                evidence = SanitizedHTTPError(
-                    response.status, content_type, request_id, "", ""
-                )
+                evidence = sanitize_response_metadata(response, secret)
             else:
                 evidence = sanitize_error(response, secret)
-            return {
+            result = {
                 "endpoint": "https://api.apiyi.com/v1/models",
                 "upstream_http_status": evidence.status,
                 "content_type": evidence.content_type,
@@ -300,6 +293,8 @@ class APIYIProvider:
                 "redirect_followed": False,
                 "peer_ip": response.peer_ip,
             }
+            assert_secret_absent(result, secret)
+            return result
         finally:
             if response is not None:
                 response.close()

@@ -190,9 +190,14 @@ func (c *HTTPCommercialCore) AuthProbe(ctx context.Context) (AuthProbeResult, er
 		return AuthProbeResult{}, err
 	}
 	if result.Endpoint != "https://api.apiyi.com/v1/models" ||
+		result.UpstreamHTTPStatus != http.StatusOK || result.ContentType != "application/json" ||
 		!result.AuthorizationHeaderPresent || !result.BearerPrefixCorrect ||
 		result.AuthorizationHeaderLength < len("Bearer ")+16 || result.URLContainsSecret ||
 		result.RedirectFollowed {
+		return AuthProbeResult{}, errors.New("core auth probe returned unsafe evidence")
+	}
+	fingerprint, err := hex.DecodeString(result.KeyFingerprint)
+	if err != nil || len(fingerprint) != sha256.Size {
 		return AuthProbeResult{}, errors.New("core auth probe returned unsafe evidence")
 	}
 	return result, nil

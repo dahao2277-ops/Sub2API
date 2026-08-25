@@ -103,7 +103,13 @@ printf '%s' "$core_release_tree" | grep -Eq '^[0-9a-f]{40}$' || {
   exit 1
 }
 core_image_tag="$(printf '%s' "$core_release_commit" | cut -c1-12)"
-core_blue_image="${AI16T_CORE_BLUE_IMAGE:-ai99t/commercial-core-runtime:blue-${core_image_tag}-${release_tag}}"
+# Blue must be an already-built immutable stable artifact. Never rebuild or
+# overlay candidate bridge files onto it during a Green release.
+core_blue_image="${AI16T_CORE_BLUE_IMAGE:-}"
+printf '%s' "$core_blue_image" | grep -Eq '^[A-Za-z0-9][A-Za-z0-9./:_-]*@sha256:[0-9a-f]{64}$' || {
+  echo "AI16T_CORE_BLUE_IMAGE must name the prior stable image by immutable sha256 digest" >&2
+  exit 1
+}
 core_green_image="${AI16T_CORE_GREEN_IMAGE:-ai99t/commercial-core-runtime:green-${core_image_tag}-${release_tag}}"
 egress_ip="${AI99T_EXPECTED_EGRESS_IP:-}"
 case "$provider_mode" in

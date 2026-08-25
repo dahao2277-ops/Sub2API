@@ -65,7 +65,10 @@ def main() -> int:
         )
         return 2
     result["probe_status"] = (
-        "pass" if 200 <= int(result["upstream_http_status"]) < 300 else "auth_rejected"
+        "pass"
+        if int(result["upstream_http_status"]) == 200
+        and result.get("content_type") == "application/json"
+        else "auth_rejected"
     )
     print(json.dumps(result, ensure_ascii=False, sort_keys=True, separators=(",", ":")))
     return 0 if result["probe_status"] == "pass" else 3

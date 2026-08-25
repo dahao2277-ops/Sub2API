@@ -1,12 +1,16 @@
 from __future__ import annotations
 
 import tempfile
+import threading
+import time
 import unittest
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 try:
     from token_platform.config import Settings
+    from token_platform.ledger import LostLease
+    from token_platform.models import Usage
     from token_platform.platform import TokenPlatform
 
     CORE_RUNTIME_AVAILABLE = True
@@ -87,9 +91,32 @@ class CoreBlueGreenTests(unittest.TestCase):
             self.assertEqual(green_new.result().status, "COMPLETED")
             self.assertEqual(in_flight_blue.result().status, "COMPLETED")
 
-        original = self.call(self.green, "cross-slot-replay")
-        replay = self.call(self.blue, "cross-slot-replay")
+        dispatches = 0
+        dispatch_lock = threading.Lock()
+        blue_call = self.blue.gateway.call
+        green_call = self.green.gateway.call
+
+        def counted_blue(**kwargs):
+            nonlocal dispatches
+            with dispatch_lock:
+                dispatches += 1
+            return blue_call(**kwargs)
+
+        def counted_green(**kwargs):
+            nonlocal dispatches
+            with dispatch_lock:
+                dispatches += 1
+            return green_call(**kwargs)
+
+        self.blue.gateway.call = counted_blue
+        self.green.gateway.call = counted_green
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            first = executor.submit(self.call, self.blue, "cross-slot-replay")
+            second = executor.submit(self.call, self.green, "cross-slot-replay")
+            original = first.result()
+            replay = second.result()
         self.assertEqual(original, replay)
+        self.assertEqual(dispatches, 1)
 
         with self.blue.database.read() as connection:
             suppliers = [
@@ -110,6 +137,81 @@ class CoreBlueGreenTests(unittest.TestCase):
         self.assertEqual(settlements, 5)
         self.assertEqual(active, 0)
         self.assertEqual(duplicates, 0)
+
+    def test_blue_recovers_expired_green_processing_owner_without_double_settlement(
+        self,
+    ) -> None:
+        with self.blue.database.read() as connection:
+            before = connection.execute(
+                "SELECT available_micro,reserved_micro FROM balances WHERE user_id=?",
+                (self.user,),
+            ).fetchone()
+        self.assertIsNotNone(before)
+        self.assertEqual(int(before[1]), 0)
+
+        preauth = self.green.begin_request(
+            user_id=self.user,
+            api_key_id=self.key,
+            provider="openai",
+            model="gpt-4o-mini",
+            prompt="green processing crash",
+            request_id="bg-green-crash",
+            idempotency_key="bg-green-crash",
+        )
+        old_owner = "green-expired-owner"
+        self.assertTrue(
+            self.green.ledger.claim(preauth.request_id, old_owner, time.time(), 0.05)
+        )
+        route = self.green._eligible_routes(preauth.request_id)[0]
+        self.green.ledger.record_attempt_started(
+            request_id=preauth.request_id,
+            attempt_number=1,
+            supplier_id=route.supplier_id,
+            route_id=route.route_id,
+            supplier_cost_version_id=route.supplier_cost_version_id,
+            owner_token=old_owner,
+        )
+        with self.green.database.read() as connection:
+            processing = connection.execute(
+                "SELECT status FROM requests WHERE request_id=?", (preauth.request_id,)
+            ).fetchone()
+            reserved = connection.execute(
+                "SELECT reserved_micro FROM balances WHERE user_id=?", (self.user,)
+            ).fetchone()
+        self.assertEqual(str(processing[0]), "PROCESSING")
+        self.assertGreater(int(reserved[0]), 0)
+
+        time.sleep(0.07)
+        self.assertEqual(
+            self.blue.recover_incomplete_requests(), [preauth.request_id]
+        )
+        settlement = self.blue._existing_settlement(preauth.request_id)
+        self.assertEqual(settlement.status, "RECONCILIATION_REQUIRED")
+        with self.blue.database.read() as connection:
+            after = connection.execute(
+                "SELECT available_micro,reserved_micro FROM balances WHERE user_id=?",
+                (self.user,),
+            ).fetchone()
+            debits = int(
+                connection.execute(
+                    "SELECT COUNT(*) FROM ledger_entries WHERE request_id=? AND transaction_type='DEBIT_SETTLEMENT'",
+                    (preauth.request_id,),
+                ).fetchone()[0]
+            )
+        self.assertEqual(int(after[1]), 0)
+        self.assertEqual(int(after[0]), int(before[0]))
+        self.assertEqual(debits, 0)
+        with self.assertRaises(LostLease):
+            self.green.ledger.record_attempt_finished(
+                request_id=preauth.request_id,
+                attempt_number=1,
+                owner_token=old_owner,
+                status="SUCCESS",
+                error_code=None,
+                latency_ms=1,
+                usage_source="provider_reported",
+                usage=Usage(1, 1),
+            )
 
 
 if __name__ == "__main__":
